@@ -35,6 +35,77 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
         </CardHeader>
       </Card>
 
+      {/* Summary Stats Card */}
+      {findings.socialMedia && (
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Platforms Found
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {findings.platformsFound || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                out of {findings.platformsChecked || 0} checked
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Data Points
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {Object.keys(findings).length}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                information categories
+              </p>
+            </CardContent>
+          </Card>
+
+          {findings.breaches && findings.breaches.found && (
+            <Card className="border-destructive/50 bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-destructive">
+                  Security Alert
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-destructive">
+                  {findings.breaches.count || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  breaches detected
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Digital Footprint
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {findings.platformsFound > 10 ? 'High' : findings.platformsFound > 5 ? 'Medium' : 'Low'}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                exposure level
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Breach Data */}
       {findings.breaches && (
         <Card className="border-border bg-card">
@@ -104,31 +175,116 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
               <Users className="h-5 w-5 text-primary" />
               Social Media Presence
             </CardTitle>
+            <CardDescription>
+              Found on {findings.platformsFound || 0} out of {findings.platformsChecked || 0} platforms checked
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {findings.socialMedia.map((platform: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-muted">
-                  <div className="flex items-center gap-3">
-                    {platform.found ? (
-                      <CheckCircle2 className="h-5 w-5 text-success" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-muted-foreground" />
-                    )}
-                    <span className="font-medium">{platform.platform}</span>
-                  </div>
-                  {platform.found && platform.data && (
-                    <div className="text-sm text-muted-foreground">
-                      {platform.platform === 'GitHub' && platform.data.login && (
-                        <span>@{platform.data.login}</span>
+            <div className="grid gap-3 md:grid-cols-2">
+              {findings.socialMedia
+                .filter((platform: any) => platform.found)
+                .map((platform: any, idx: number) => (
+                  <Card key={idx} className="bg-muted border-primary/20">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <span className="font-semibold">{platform.platform}</span>
+                        </div>
+                        {platform.profileUrl && (
+                          <a 
+                            href={platform.profileUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline"
+                          >
+                            View →
+                          </a>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      {platform.username && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Username:</span>
+                          <span className="font-mono">@{platform.username}</span>
+                        </div>
                       )}
-                      {platform.platform === 'Reddit' && platform.data.data?.name && (
-                        <span>u/{platform.data.data.name}</span>
+                      {platform.name && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Name:</span>
+                          <span>{platform.name}</span>
+                        </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                      {platform.bio && (
+                        <div className="text-muted-foreground text-xs mt-2 p-2 bg-background rounded">
+                          {platform.bio}
+                        </div>
+                      )}
+                      {platform.location && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Location:</span>
+                          <span>{platform.location}</span>
+                        </div>
+                      )}
+                      {platform.company && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Company:</span>
+                          <span>{platform.company}</span>
+                        </div>
+                      )}
+                      {platform.followers !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Followers:</span>
+                          <span className="font-semibold">{platform.followers.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {platform.following !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Following:</span>
+                          <span>{platform.following.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {platform.karma && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Karma:</span>
+                          <span className="font-semibold">{platform.karma.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {platform.publicRepos !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Public Repos:</span>
+                          <span>{platform.publicRepos}</span>
+                        </div>
+                      )}
+                      {platform.createdAt && (
+                        <div className="flex justify-between text-xs mt-2 pt-2 border-t border-border">
+                          <span className="text-muted-foreground">Joined:</span>
+                          <span>{new Date(platform.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                      {platform.title && !platform.username && (
+                        <div className="text-xs text-muted-foreground">
+                          {platform.title}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+            
+            {/* Show platforms where user was not found */}
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-2">Not found on:</p>
+              <div className="flex flex-wrap gap-1">
+                {findings.socialMedia
+                  .filter((platform: any) => !platform.found)
+                  .map((platform: any, idx: number) => (
+                    <Badge key={idx} variant="outline" className="text-xs opacity-50">
+                      {platform.platform}
+                    </Badge>
+                  ))}
+              </div>
             </div>
           </CardContent>
         </Card>

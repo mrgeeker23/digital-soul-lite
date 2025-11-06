@@ -30,8 +30,8 @@ const Index = () => {
             <Database className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12+</div>
-            <p className="text-xs text-muted-foreground">Active integrations</p>
+            <div className="text-2xl font-bold">24+</div>
+            <p className="text-xs text-muted-foreground">Platforms checked</p>
           </CardContent>
         </Card>
 
@@ -72,22 +72,49 @@ const Index = () => {
       <Card className="border-border bg-card">
         <CardHeader>
           <CardTitle>Capabilities</CardTitle>
-          <CardDescription>What DigitalSoulLite can discover</CardDescription>
+          <CardDescription>What DigitalSoulLite discovers across the web</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Email Discovery</Badge>
-            <Badge variant="secondary">Phone Lookup</Badge>
-            <Badge variant="secondary">Social Media Profiling</Badge>
-            <Badge variant="secondary">Breach Detection</Badge>
-            <Badge variant="secondary">WHOIS Data</Badge>
-            <Badge variant="secondary">DNS Records</Badge>
-            <Badge variant="secondary">EXIF Metadata</Badge>
-            <Badge variant="secondary">Web Archives</Badge>
-            <Badge variant="secondary">Network Analysis</Badge>
-            <Badge variant="secondary">Behavioral Patterns</Badge>
-            <Badge variant="secondary">Risk Assessment</Badge>
-            <Badge variant="secondary">AI Narrative Generation</Badge>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-primary">Social Media Intelligence (24+ Platforms)</h3>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">GitHub</Badge>
+              <Badge variant="secondary">Reddit</Badge>
+              <Badge variant="secondary">Instagram</Badge>
+              <Badge variant="secondary">Twitter/X</Badge>
+              <Badge variant="secondary">TikTok</Badge>
+              <Badge variant="secondary">YouTube</Badge>
+              <Badge variant="secondary">LinkedIn</Badge>
+              <Badge variant="secondary">Twitch</Badge>
+              <Badge variant="secondary">Medium</Badge>
+              <Badge variant="secondary">Dev.to</Badge>
+              <Badge variant="secondary">Pinterest</Badge>
+              <Badge variant="secondary">+ 13 more platforms</Badge>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-primary">Security & Infrastructure</h3>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">Data Breach Detection</Badge>
+              <Badge variant="secondary">WHOIS Lookup</Badge>
+              <Badge variant="secondary">DNS Records</Badge>
+              <Badge variant="secondary">Certificate Transparency</Badge>
+              <Badge variant="secondary">Subdomain Discovery</Badge>
+              <Badge variant="secondary">Web Archives</Badge>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-primary">Data Extraction</h3>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">Profile Metadata</Badge>
+              <Badge variant="secondary">Account Creation Dates</Badge>
+              <Badge variant="secondary">Follower/Following Counts</Badge>
+              <Badge variant="secondary">Location & Company Info</Badge>
+              <Badge variant="secondary">Bio & Descriptions</Badge>
+              <Badge variant="secondary">Activity Patterns</Badge>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -14,12 +14,6 @@ import {
 
 const items = [
   { title: "Search", url: "/", icon: Search },
-  { title: "Profile Analysis", url: "/analysis", icon: User },
-  { title: "Data Sources", url: "/sources", icon: Database },
-  { title: "Activity Timeline", url: "/timeline", icon: Activity },
-  { title: "Risk Assessment", url: "/risk", icon: Shield },
-  { title: "Network Map", url: "/network", icon: Map },
-  { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
 
 export function AppSidebar() {

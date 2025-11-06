@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { SearchInterface } from "@/components/SearchInterface";
+import { ResultsDisplay } from "@/components/ResultsDisplay";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Globe, Database, Shield, Activity } from "lucide-react";
 
 const Index = () => {
+  const [searchResults, setSearchResults] = useState<any>(null);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="space-y-2">
@@ -15,7 +19,9 @@ const Index = () => {
         </p>
       </div>
 
-      <SearchInterface />
+      <SearchInterface onResults={setSearchResults} />
+
+      {searchResults && <ResultsDisplay results={searchResults} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-border bg-card">

@@ -1,18 +1,63 @@
 import { useState } from "react";
-import { Search, User, Mail, Phone, AlertTriangle } from "lucide-react";
+import { Search, User, Mail, Phone, AlertTriangle, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-export function SearchInterface() {
+interface SearchInterfaceProps {
+  onResults?: (results: any) => void;
+}
+
+export function SearchInterface({ onResults }: SearchInterfaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"username" | "email" | "phone">("username");
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-  const handleSearch = () => {
-    // TODO: Implement search logic with API integrations
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a search query",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
     console.log(`Searching ${searchType}:`, searchQuery);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('osint-search', {
+        body: { query: searchQuery, type: searchType }
+      });
+
+      if (error) throw error;
+
+      console.log("Search results:", data);
+      
+      toast({
+        title: "Search Complete",
+        description: `Found data for ${searchQuery}`,
+      });
+
+      if (onResults) {
+        onResults(data);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      toast({
+        title: "Search Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -52,9 +97,22 @@ export function SearchInterface() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1"
                 />
-                <Button onClick={handleSearch} className="bg-primary hover:bg-primary/90">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
+                <Button 
+                  onClick={handleSearch} 
+                  disabled={isLoading}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-2" />
+                      Search
+                    </>
+                  )}
                 </Button>
               </div>
             </TabsContent>
@@ -68,9 +126,22 @@ export function SearchInterface() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1"
                 />
-                <Button onClick={handleSearch} className="bg-primary hover:bg-primary/90">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
+                <Button 
+                  onClick={handleSearch} 
+                  disabled={isLoading}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-2" />
+                      Search
+                    </>
+                  )}
                 </Button>
               </div>
             </TabsContent>
@@ -84,9 +155,22 @@ export function SearchInterface() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1"
                 />
-                <Button onClick={handleSearch} className="bg-primary hover:bg-primary/90">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
+                <Button 
+                  onClick={handleSearch} 
+                  disabled={isLoading}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-2" />
+                      Search
+                    </>
+                  )}
                 </Button>
               </div>
             </TabsContent>

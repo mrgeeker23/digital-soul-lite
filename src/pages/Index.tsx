@@ -4,23 +4,13 @@ import { ResultsDisplay } from "@/components/ResultsDisplay";
 import { ApiUsageMonitor } from "@/components/ApiUsageMonitor";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Globe, Database, Shield, Activity, Sparkles } from "lucide-react";
+import { Globe, Database, Shield, Activity } from "lucide-react";
 
 const Index = () => {
   const [searchResults, setSearchResults] = useState<any>(null);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <Alert className="bg-gradient-to-r from-primary/10 via-primary/5 to-background border-primary/20">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <AlertTitle className="text-lg font-semibold">Demo Mode Active</AlertTitle>
-        <AlertDescription className="text-sm">
-          You're viewing a fully functional prototype. Free APIs are operational (breach detection, DNS, social media). 
-          <strong className="text-primary"> Premium APIs</strong> (Pipl, Shodan, Hunter.io, Social-Searcher) available on paid plans.
-        </AlertDescription>
-      </Alert>
-
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">
           Digital Footprint Intelligence

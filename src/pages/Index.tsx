@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SearchInterface } from "@/components/SearchInterface";
 import { ResultsDisplay } from "@/components/ResultsDisplay";
+import { ApiUsageMonitor } from "@/components/ApiUsageMonitor";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Globe, Database, Shield, Activity } from "lucide-react";
@@ -20,6 +21,8 @@ const Index = () => {
       </div>
 
       <SearchInterface onResults={setSearchResults} />
+
+      <ApiUsageMonitor />
 
       {searchResults && <ResultsDisplay results={searchResults} />}
 

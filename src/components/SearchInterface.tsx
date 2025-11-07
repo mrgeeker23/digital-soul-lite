@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { apiRateLimiter } from "@/lib/apiRateLimiter";
 
 interface SearchInterfaceProps {
   onResults?: (results: any) => void;
@@ -28,6 +29,17 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
       return;
     }
 
+    // Check rate limits before making API call
+    const apiCheck = apiRateLimiter.canCallApi('osint-search');
+    if (!apiCheck.allowed) {
+      toast({
+        title: "Rate Limit Reached",
+        description: apiCheck.reason || "You've reached the daily limit for this API",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     console.log(`Searching ${searchType}:`, searchQuery);
 
@@ -37,6 +49,9 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
       });
 
       if (error) throw error;
+
+      // Increment usage counter after successful call
+      apiRateLimiter.incrementUsage('osint-search');
 
       console.log("Search results:", data);
       

@@ -107,16 +107,28 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
       )}
 
       {/* Breach Data */}
-      {findings.breaches && (
+      {(findings.breaches !== undefined) && (
         <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-destructive" />
               Data Breach Analysis
+              {findings.breaches === null && (
+                <Badge variant="outline" className="text-xs">
+                  Requires API Key
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {findings.breaches.error ? (
+            {findings.breaches === null ? (
+              <Alert className="bg-muted border-border">
+                <AlertDescription>
+                  Breach checking requires a Have I Been Pwned (HIBP) API key. 
+                  This is a premium feature that checks if the email has been compromised in data breaches.
+                </AlertDescription>
+              </Alert>
+            ) : findings.breaches.error ? (
               <Alert className="bg-muted border-border">
                 <AlertDescription>{findings.breaches.error}</AlertDescription>
               </Alert>
@@ -297,23 +309,40 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
             <CardTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-primary" />
               Domain Information
+              <Badge variant="secondary" className="text-xs">
+                Active ✓
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Domain:</span>
-                <span className="font-mono">{findings.dns.domain}</span>
+                <span className="font-mono font-semibold">{findings.dns.domain}</span>
               </div>
-              {findings.dns.dns?.Answer && (
-                <div className="space-y-1">
-                  <span className="text-muted-foreground">DNS Records:</span>
+              {findings.dns.dns?.Answer && findings.dns.dns.Answer.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-muted-foreground font-semibold">DNS Records:</span>
                   {findings.dns.dns.Answer.map((record: any, idx: number) => (
-                    <div key={idx} className="font-mono text-xs bg-muted p-2 rounded">
-                      {record.data}
+                    <div key={idx} className="font-mono text-xs bg-muted p-3 rounded border border-border">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span>{record.type || 'A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Address:</span>
+                        <span className="text-primary font-semibold">{record.data}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
+              )}
+              {findings.dns.whois?.ErrorMessage && (
+                <Alert className="bg-muted/50 border-border mt-2">
+                  <AlertDescription className="text-xs">
+                    WHOIS lookup requires premium API access
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           </CardContent>
@@ -321,26 +350,70 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
       )}
 
       {/* Certificate Transparency */}
-      {findings.certificates && findings.certificates.subdomains && (
+      {findings.certificates && (
         <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-primary" />
-              Certificate Transparency ({findings.certificates.total} total)
+              SSL Certificate Transparency
+              <Badge variant="secondary" className="text-xs">
+                Active ✓
+              </Badge>
             </CardTitle>
+            <CardDescription>
+              {findings.certificates.total ? 
+                `Found ${findings.certificates.total} certificates` : 
+                'Certificate transparency logs'
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Discovered Subdomains ({findings.certificates.subdomains.length}):
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {findings.certificates.subdomains.slice(0, 20).map((subdomain: string, idx: number) => (
-                  <Badge key={idx} variant="secondary" className="font-mono text-xs">
-                    {subdomain}
-                  </Badge>
-                ))}
-              </div>
+            <div className="space-y-3">
+              {findings.certificates.subdomains && findings.certificates.subdomains.length > 0 && (
+                <>
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    Discovered Subdomains ({findings.certificates.subdomains.length}):
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {findings.certificates.subdomains.slice(0, 30).map((subdomain: string, idx: number) => (
+                      <Badge key={idx} variant="secondary" className="font-mono text-xs">
+                        {subdomain}
+                      </Badge>
+                    ))}
+                  </div>
+                  {findings.certificates.subdomains.length > 30 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      ... and {findings.certificates.subdomains.length - 30} more
+                    </p>
+                  )}
+                </>
+              )}
+              
+              {findings.certificates.certificates && findings.certificates.certificates.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-sm font-semibold text-muted-foreground mb-2">
+                    Recent Certificates (showing first 5):
+                  </p>
+                  <div className="space-y-2">
+                    {findings.certificates.certificates.slice(0, 5).map((cert: any, idx: number) => (
+                      <div key={idx} className="bg-muted p-3 rounded text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Common Name:</span>
+                          <span className="font-mono">{cert.common_name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Email:</span>
+                          <span className="font-mono text-primary">{cert.name_value}</span>
+                        </div>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Issued:</span>
+                          <span>{new Date(cert.not_before).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

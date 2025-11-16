@@ -81,7 +81,7 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5 text-primary" />
-            OSINT Search Interface
+            Search Intelligence Interface
           </CardTitle>
           <CardDescription>
             Begin your digital footprint analysis by entering a username, email, or phone number

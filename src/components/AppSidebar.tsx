@@ -28,7 +28,7 @@ export function AppSidebar() {
             {open && (
               <div>
                 <h2 className="text-lg font-bold text-foreground">DigitalSoul</h2>
-                <p className="text-xs text-muted-foreground">OSINT Intelligence</p>
+                <p className="text-xs text-muted-foreground">Search Intelligence</p>
               </div>
             )}
           </div>

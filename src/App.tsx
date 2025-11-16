@@ -23,7 +23,7 @@ const App = () => (
               <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
                 <SidebarTrigger className="text-foreground" />
                 <div className="flex-1">
-                  <h1 className="text-sm font-semibold text-foreground">DigitalSoulLite</h1>
+                  <h1 className="text-sm font-semibold text-foreground">Digital Soul Lite</h1>
                 </div>
               </header>
               <main className="flex-1 p-6">

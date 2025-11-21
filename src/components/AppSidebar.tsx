@@ -27,7 +27,7 @@ export function AppSidebar() {
             <Shield className="h-6 w-6 text-primary" />
             {open && (
               <div>
-                <h2 className="text-lg font-bold text-foreground">Digital Soul Lite</h2>
+                <h2 className="text-lg font-bold text-foreground">DigitalSoul Lite</h2>
                 <p className="text-xs text-muted-foreground">Search Intelligence</p>
               </div>
             )}

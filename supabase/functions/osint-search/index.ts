@@ -117,14 +117,25 @@ serve(async (req) => {
       // Check all platforms in parallel for speed
       const checks = platforms.map(async (platform) => {
         try {
+          // Add timeout to prevent hanging requests
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          
           const response = await fetch(platform.url, {
             headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Connection': 'keep-alive',
             },
-            redirect: 'follow'
+            redirect: 'follow',
+            signal: controller.signal
           });
           
-          const exists = response.ok && response.status === 200;
+          clearTimeout(timeoutId);
+          
+          // More strict status checking - only accept 200 OK
+          const exists = response.status === 200;
           
           let profileData: any = null;
           if (exists) {
@@ -138,30 +149,65 @@ serve(async (req) => {
             else if (contentType?.includes('text/html')) {
               const html = await response.text();
               
-              // Heuristics to detect if profile exists vs 404 page
+              // Enhanced detection heuristics
               const notFoundIndicators = [
                 'page not found',
                 'user not found',
                 'profile not found',
+                'account not found',
+                'sorry, this page',
                 '404',
                 'does not exist',
-                'isn\'t available'
+                'isn\'t available',
+                'suspended account',
+                'this account doesn\'t exist',
+                'no longer exists',
+                'couldn\'t find',
+                'nothing to see here',
+                'not on',
+                'isn\'t on'
               ];
               
               const lowerHtml = html.toLowerCase();
-              const isNotFound = notFoundIndicators.some(indicator => 
+              
+              // Check for strong indicators profile exists
+              const foundIndicators = [
+                'og:type',
+                'profile:username',
+                'twitter:creator',
+                'author',
+                'article:author',
+                'profile',
+                'followers',
+                'following',
+                'posts',
+                'tweets',
+                'videos'
+              ];
+              
+              const hasStrongIndicators = foundIndicators.some(indicator => 
                 lowerHtml.includes(indicator)
               );
               
-              if (!isNotFound) {
+              const hasNotFoundIndicators = notFoundIndicators.some(indicator => 
+                lowerHtml.includes(indicator)
+              );
+              
+              // Verify minimum content length (404 pages are usually short)
+              const hasSubstantialContent = html.length > 5000;
+              
+              // Profile exists if it has strong indicators OR substantial content AND no 404 indicators
+              if ((hasStrongIndicators || hasSubstantialContent) && !hasNotFoundIndicators) {
                 // Extract basic info from HTML
                 const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
                 const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+                const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
                 
                 profileData = {
-                  title: titleMatch ? titleMatch[1] : null,
-                  description: descMatch ? descMatch[1] : null,
-                  exists: true
+                  title: ogTitleMatch?.[1] || titleMatch?.[1] || null,
+                  description: descMatch?.[1] || null,
+                  exists: true,
+                  confidence: hasStrongIndicators ? 'high' : 'medium'
                 };
               } else {
                 return { platform: platform.name, found: false };
@@ -219,8 +265,14 @@ serve(async (req) => {
 
           return extractedInfo;
         } catch (e) {
-          console.error(`${platform.name} check failed:`, e);
-          return { platform: platform.name, found: false, error: 'Check failed' };
+          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+          console.error(`${platform.name} check failed:`, errorMsg);
+          
+          // Distinguish between timeout and other errors
+          if (errorMsg.includes('abort')) {
+            return { platform: platform.name, found: false, error: 'Timeout' };
+          }
+          return { platform: platform.name, found: false, error: 'Unavailable' };
         }
       });
 

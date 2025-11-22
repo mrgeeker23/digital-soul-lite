@@ -138,7 +138,7 @@ serve(async (req) => {
       console.log("Running comprehensive username-based searches across 15+ platforms...");
       
       const platforms = [
-        // Social Media
+        // Social Media (15 platforms)
         { name: 'GitHub', url: `https://api.github.com/users/${query}`, type: 'api' },
         { name: 'Reddit', url: `https://www.reddit.com/user/${query}/about.json`, type: 'api' },
         { name: 'Instagram', url: `https://www.instagram.com/${query}/?__a=1`, type: 'web' },
@@ -148,29 +148,52 @@ serve(async (req) => {
         { name: 'Twitch', url: `https://www.twitch.tv/${query}`, type: 'web' },
         { name: 'Medium', url: `https://medium.com/@${query}`, type: 'web' },
         { name: 'Dev.to', url: `https://dev.to/${query}`, type: 'web' },
+        { name: 'Snapchat', url: `https://www.snapchat.com/add/${query}`, type: 'web' },
+        { name: 'Facebook', url: `https://www.facebook.com/${query}`, type: 'web' },
+        { name: 'Telegram', url: `https://t.me/${query}`, type: 'web' },
+        { name: 'Discord', url: `https://discord.com/users/${query}`, type: 'web' },
+        { name: 'Mastodon', url: `https://mastodon.social/@${query}`, type: 'web' },
+        { name: 'Bluesky', url: `https://bsky.app/profile/${query}`, type: 'web' },
         
-        // Professional
+        // Professional (8 platforms)
         { name: 'LinkedIn', url: `https://www.linkedin.com/in/${query}`, type: 'web' },
         { name: 'AngelList', url: `https://angel.co/u/${query}`, type: 'web' },
         { name: 'HackerNews', url: `https://news.ycombinator.com/user?id=${query}`, type: 'web' },
         { name: 'StackOverflow', url: `https://stackoverflow.com/users/${query}`, type: 'web' },
+        { name: 'GitLab', url: `https://gitlab.com/${query}`, type: 'web' },
+        { name: 'Bitbucket', url: `https://bitbucket.org/${query}`, type: 'web' },
+        { name: 'Codepen', url: `https://codepen.io/${query}`, type: 'web' },
+        { name: 'Kaggle', url: `https://www.kaggle.com/${query}`, type: 'web' },
         
-        // Gaming
+        // Gaming (6 platforms)
         { name: 'Steam', url: `https://steamcommunity.com/id/${query}`, type: 'web' },
         { name: 'Discord.bio', url: `https://discord.bio/p/${query}`, type: 'web' },
         { name: 'Roblox', url: `https://www.roblox.com/users/profile?username=${query}`, type: 'web' },
+        { name: 'Epic Games', url: `https://www.epicgames.com/id/${query}`, type: 'web' },
+        { name: 'Xbox', url: `https://www.xbox.com/en-US/Profile?Gamertag=${query}`, type: 'web' },
+        { name: 'PlayStation', url: `https://psnprofiles.com/${query}`, type: 'web' },
         
-        // Content
+        // Content & Creative (10 platforms)
         { name: 'Pinterest', url: `https://www.pinterest.com/${query}`, type: 'web' },
         { name: 'Flickr', url: `https://www.flickr.com/people/${query}`, type: 'web' },
         { name: 'Vimeo', url: `https://vimeo.com/${query}`, type: 'web' },
         { name: 'SoundCloud', url: `https://soundcloud.com/${query}`, type: 'web' },
-        
-        // Forums & Communities
-        { name: 'Quora', url: `https://www.quora.com/profile/${query}`, type: 'web' },
-        { name: 'ProductHunt', url: `https://www.producthunt.com/@${query}`, type: 'web' },
         { name: 'Behance', url: `https://www.behance.net/${query}`, type: 'web' },
         { name: 'Dribbble', url: `https://dribbble.com/${query}`, type: 'web' },
+        { name: 'DeviantArt', url: `https://www.deviantart.com/${query}`, type: 'web' },
+        { name: 'ArtStation', url: `https://www.artstation.com/${query}`, type: 'web' },
+        { name: 'Spotify', url: `https://open.spotify.com/user/${query}`, type: 'web' },
+        { name: 'Patreon', url: `https://www.patreon.com/${query}`, type: 'web' },
+        
+        // Forums & Communities (8 platforms)
+        { name: 'Quora', url: `https://www.quora.com/profile/${query}`, type: 'web' },
+        { name: 'ProductHunt', url: `https://www.producthunt.com/@${query}`, type: 'web' },
+        { name: 'About.me', url: `https://about.me/${query}`, type: 'web' },
+        { name: 'Keybase', url: `https://keybase.io/${query}`, type: 'web' },
+        { name: 'Linktree', url: `https://linktr.ee/${query}`, type: 'web' },
+        { name: 'Gravatar', url: `https://en.gravatar.com/${query}`, type: 'web' },
+        { name: 'WordPress', url: `https://${query}.wordpress.com`, type: 'web' },
+        { name: 'Blogger', url: `https://${query}.blogspot.com`, type: 'web' },
       ];
 
       results.findings.socialMedia = [];
@@ -385,8 +408,26 @@ serve(async (req) => {
       results.findings.platformsFound = foundPlatforms.length;
       results.findings.platformsChecked = platforms.length;
       
+      // Calculate data richness score
+      const dataRichnessScore = Math.round(
+        (foundPlatforms.length / platforms.length) * 30 +
+        (discoveredEmails.size > 0 ? 20 : 0) +
+        (foundPlatforms.some((p: any) => p.avatarUrl) ? 15 : 0) +
+        (foundPlatforms.some((p: any) => p.bio || p.description) ? 20 : 0) +
+        (foundPlatforms.some((p: any) => p.location) ? 15 : 0)
+      );
+
+      results.findings.dataRichnessScore = dataRichnessScore;
+      results.findings.summary = {
+        totalPlatforms: platforms.length,
+        foundPlatforms: foundPlatforms.length,
+        discoveredEmails: discoveredEmails.size,
+        richness: dataRichnessScore >= 70 ? 'High' : dataRichnessScore >= 40 ? 'Medium' : 'Low'
+      };
+      
       console.log(`Found ${foundPlatforms.length}/${platforms.length} platforms for ${query}`);
       console.log(`Discovered ${discoveredEmails.size} emails from profiles`);
+      console.log(`Data richness score: ${dataRichnessScore}/100`);
     }
 
     // Phone searches
@@ -456,37 +497,6 @@ serve(async (req) => {
       }
 
       results.findings.phone = phoneIntelligence;
-    }
-
-    // AI-Powered Analysis
-    console.log("Running AI-powered analysis...");
-    try {
-      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-      if (LOVABLE_API_KEY) {
-        const analysisPrompt = `Analyze this OSINT data and provide insights about digital footprint, privacy risks, and behavioral patterns:\n\n${JSON.stringify(results.findings, null, 2)}\n\nProvide a concise analysis covering:\n1. Digital footprint strength (1-10)\n2. Privacy risk assessment\n3. Key findings\n4. Recommendations`;
-
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              { role: 'system', content: 'You are an OSINT analysis expert. Provide clear, actionable insights.' },
-              { role: 'user', content: analysisPrompt }
-            ],
-          }),
-        });
-
-        if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
-          results.findings.aiAnalysis = aiData.choices[0].message.content;
-        }
-      }
-    } catch (e) {
-      console.error("AI analysis failed:", e);
     }
 
     console.log("OSINT search complete");

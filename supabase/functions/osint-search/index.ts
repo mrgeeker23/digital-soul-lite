@@ -131,10 +131,21 @@ serve(async (req) => {
           console.error("Wayback lookup failed:", e);
         }
 
-        // Subdomain enumeration
-        console.log("Enumerating subdomains...");
+        // Expanded subdomain enumeration (100+ subdomains)
+        console.log("Enumerating subdomains (100+ checks)...");
         try {
-          const commonSubdomains = ['www', 'mail', 'ftp', 'admin', 'blog', 'shop', 'api', 'dev', 'staging', 'test', 'vpn', 'ssh', 'cdn', 'portal', 'app', 'mobile', 'webmail', 'secure', 'remote', 'support'];
+          const commonSubdomains = [
+            'www', 'mail', 'ftp', 'admin', 'blog', 'shop', 'api', 'dev', 'staging', 'test', 'vpn', 'ssh', 'cdn', 'portal', 'app', 'mobile', 'webmail', 'secure', 'remote', 'support',
+            'beta', 'alpha', 'demo', 'sandbox', 'qa', 'uat', 'prod', 'www2', 'old', 'new', 'backup', 'store', 'mail2', 'smtp', 'pop', 'imap', 'mx', 'ns1', 'ns2', 'dns',
+            'cpanel', 'whm', 'panel', 'manage', 'dashboard', 'control', 'login', 'signin', 'signup', 'register', 'auth', 'oauth', 'sso',
+            'forum', 'community', 'wiki', 'docs', 'help', 'support', 'status', 'monitoring', 'stats', 'analytics', 'metrics',
+            'files', 'download', 'upload', 'assets', 'static', 'media', 'img', 'images', 'video', 'videos', 'audio',
+            'db', 'database', 'mysql', 'postgres', 'mongo', 'redis', 'cache', 'queue', 'worker', 'jobs',
+            'git', 'svn', 'repo', 'code', 'ci', 'jenkins', 'build', 'deploy',
+            'crm', 'erp', 'hr', 'finance', 'sales', 'marketing', 'invoice', 'billing', 'payment', 'checkout',
+            'track', 'tracking', 'pixel', 'tag', 'event', 'log', 'logs', 'syslog',
+            'web', 'www1', 'www3', 'site', 'host', 'server', 'cloud', 'edge'
+          ];
           const subdomains = [];
           
           for (const sub of commonSubdomains) {
@@ -160,11 +171,222 @@ serve(async (req) => {
           
           results.findings.subdomains = {
             total: subdomains.length,
-            found: subdomains
+            found: subdomains,
+            checked: commonSubdomains.length
           };
-          console.log(`Found ${subdomains.length} subdomains`);
+          console.log(`Found ${subdomains.length}/${commonSubdomains.length} subdomains`);
         } catch (e) {
           console.error("Subdomain enumeration failed:", e);
+        }
+
+        // Enhanced DNS Analysis (MX, TXT, SPF, DKIM, DMARC)
+        console.log("Performing enhanced DNS analysis...");
+        try {
+          const dnsRecords: any = {
+            A: [],
+            MX: [],
+            TXT: [],
+            NS: [],
+            SOA: null,
+            SPF: null,
+            DMARC: null,
+            DKIM: null
+          };
+
+          // A records
+          const aResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=A`, {
+            headers: { 'Accept': 'application/dns-json' }
+          });
+          if (aResponse.ok) {
+            const aData = await aResponse.json();
+            if (aData.Answer) {
+              dnsRecords.A = aData.Answer.map((a: any) => a.data);
+            }
+          }
+
+          // MX records
+          const mxResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=MX`, {
+            headers: { 'Accept': 'application/dns-json' }
+          });
+          if (mxResponse.ok) {
+            const mxData = await mxResponse.json();
+            if (mxData.Answer) {
+              dnsRecords.MX = mxData.Answer.map((mx: any) => ({
+                priority: mx.data.split(' ')[0],
+                server: mx.data.split(' ')[1]
+              }));
+            }
+          }
+
+          // TXT records (SPF, DMARC, etc.)
+          const txtResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=TXT`, {
+            headers: { 'Accept': 'application/dns-json' }
+          });
+          if (txtResponse.ok) {
+            const txtData = await txtResponse.json();
+            if (txtData.Answer) {
+              dnsRecords.TXT = txtData.Answer.map((txt: any) => txt.data);
+              
+              // Extract SPF
+              const spfRecord = dnsRecords.TXT.find((r: string) => r.includes('v=spf1'));
+              if (spfRecord) dnsRecords.SPF = spfRecord;
+            }
+          }
+
+          // DMARC record
+          const dmarcResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, {
+            headers: { 'Accept': 'application/dns-json' }
+          });
+          if (dmarcResponse.ok) {
+            const dmarcData = await dmarcResponse.json();
+            if (dmarcData.Answer) {
+              dnsRecords.DMARC = dmarcData.Answer[0]?.data;
+            }
+          }
+
+          results.findings.enhancedDNS = dnsRecords;
+        } catch (e) {
+          console.error("Enhanced DNS analysis failed:", e);
+        }
+
+        // IP Geolocation for discovered IPs
+        console.log("Performing IP geolocation...");
+        try {
+          const discoveredIPs = new Set<string>();
+          
+          // Collect IPs from subdomains
+          results.findings.subdomains?.found?.forEach((sub: any) => {
+            sub.ips.forEach((ip: string) => discoveredIPs.add(ip));
+          });
+
+          // Collect IPs from A records
+          results.findings.enhancedDNS?.A?.forEach((ip: string) => discoveredIPs.add(ip));
+
+          const ipInfo = [];
+          for (const ip of Array.from(discoveredIPs).slice(0, 10)) { // Limit to 10 IPs
+            try {
+              const ipResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting`);
+              if (ipResponse.ok) {
+                const ipData = await ipResponse.json();
+                if (ipData.status === 'success') {
+                  ipInfo.push({
+                    ip,
+                    location: `${ipData.city}, ${ipData.regionName}, ${ipData.country}`,
+                    coordinates: { lat: ipData.lat, lon: ipData.lon },
+                    isp: ipData.isp,
+                    org: ipData.org,
+                    asn: ipData.as,
+                    hosting: ipData.hosting,
+                    proxy: ipData.proxy,
+                    timezone: ipData.timezone
+                  });
+                }
+              }
+              // Rate limit: 45 requests per minute
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            } catch (e) {
+              console.error(`IP geolocation failed for ${ip}:`, e);
+            }
+          }
+
+          results.findings.ipGeolocation = {
+            total: discoveredIPs.size,
+            analyzed: ipInfo.length,
+            details: ipInfo
+          };
+        } catch (e) {
+          console.error("IP geolocation failed:", e);
+        }
+
+        // Email deliverability check
+        console.log("Checking email deliverability...");
+        try {
+          const emailDeliverability: any = {
+            mxRecords: results.findings.enhancedDNS?.MX?.length > 0,
+            spfConfigured: !!results.findings.enhancedDNS?.SPF,
+            dmarcConfigured: !!results.findings.enhancedDNS?.DMARC,
+            score: 0
+          };
+
+          if (emailDeliverability.mxRecords) emailDeliverability.score += 40;
+          if (emailDeliverability.spfConfigured) emailDeliverability.score += 30;
+          if (emailDeliverability.dmarcConfigured) emailDeliverability.score += 30;
+
+          emailDeliverability.rating = emailDeliverability.score >= 80 ? 'Excellent' : 
+                                        emailDeliverability.score >= 50 ? 'Good' : 
+                                        emailDeliverability.score >= 30 ? 'Fair' : 'Poor';
+
+          results.findings.emailDeliverability = emailDeliverability;
+        } catch (e) {
+          console.error("Email deliverability check failed:", e);
+        }
+
+        // Google Dorking for exposed files
+        console.log("Checking for exposed files (Google Dorks)...");
+        try {
+          const dorkResults: any[] = [];
+          const dorks = [
+            `site:${domain} filetype:pdf`,
+            `site:${domain} filetype:doc`,
+            `site:${domain} filetype:xls`,
+            `site:${domain} filetype:sql`,
+            `site:${domain} filetype:env`,
+            `site:${domain} filetype:log`,
+            `site:${domain} "index of /"`,
+            `site:${domain} intitle:"index of" "backup"`,
+            `site:${domain} ext:php inurl:config`,
+            `site:${domain} inurl:admin`
+          ];
+
+          dorkResults.push(...dorks.map(dork => ({
+            query: dork,
+            risk: dork.includes('sql') || dork.includes('env') || dork.includes('config') ? 'High' : 
+                  dork.includes('backup') || dork.includes('admin') ? 'Medium' : 'Low',
+            searchUrl: `https://www.google.com/search?q=${encodeURIComponent(dork)}`
+          })));
+
+          results.findings.googleDorks = {
+            total: dorks.length,
+            queries: dorkResults,
+            note: 'Execute search URLs manually to check for exposed files'
+          };
+        } catch (e) {
+          console.error("Google dorking failed:", e);
+        }
+
+        // SSL/TLS Analysis
+        console.log("Analyzing SSL/TLS configuration...");
+        try {
+          const sslResponse = await fetch(`https://${domain}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          
+          const sslInfo: any = {
+            enabled: sslResponse.url.startsWith('https'),
+            redirectsToHttps: !sslResponse.url.startsWith('https://www.') && sslResponse.url.startsWith('https'),
+            headers: {
+              strictTransportSecurity: sslResponse.headers.get('strict-transport-security'),
+              contentSecurityPolicy: sslResponse.headers.get('content-security-policy'),
+              xFrameOptions: sslResponse.headers.get('x-frame-options'),
+              xContentTypeOptions: sslResponse.headers.get('x-content-type-options'),
+              referrerPolicy: sslResponse.headers.get('referrer-policy')
+            },
+            score: 0
+          };
+
+          if (sslInfo.enabled) sslInfo.score += 30;
+          if (sslInfo.headers.strictTransportSecurity) sslInfo.score += 25;
+          if (sslInfo.headers.contentSecurityPolicy) sslInfo.score += 20;
+          if (sslInfo.headers.xFrameOptions) sslInfo.score += 15;
+          if (sslInfo.headers.xContentTypeOptions) sslInfo.score += 10;
+
+          sslInfo.rating = sslInfo.score >= 80 ? 'Excellent' : 
+                           sslInfo.score >= 60 ? 'Good' : 
+                           sslInfo.score >= 40 ? 'Fair' : 'Poor';
+
+          results.findings.sslAnalysis = sslInfo;
+        } catch (e) {
+          console.error("SSL/TLS analysis failed:", e);
         }
 
         // Technology stack detection
@@ -221,14 +443,21 @@ serve(async (req) => {
 
     // Username searches - COMPREHENSIVE multi-platform check
     if (type === 'username') {
-      console.log("Running comprehensive username-based searches across 47+ platforms...");
+      console.log("Running comprehensive username-based searches across 57+ platforms...");
       
-      // Pastebin and paste site searches
-      console.log("Searching paste sites...");
+      // Expanded paste site searches (10+ sites)
+      console.log("Searching paste sites (10+ platforms)...");
       const pasteSites = [
         { name: 'Pastebin', url: `https://pastebin.com/u/${query}`, type: 'profile' },
         { name: 'GitHub Gists', url: `https://gist.github.com/${query}`, type: 'profile' },
         { name: 'Ghostbin', url: `https://ghostbin.co/paste/${query}`, type: 'paste' },
+        { name: 'PasteSR', url: `https://paste.sr.ht/~${query}`, type: 'profile' },
+        { name: 'Hastebin', url: `https://hastebin.com/${query}`, type: 'paste' },
+        { name: 'JustPaste.it', url: `https://justpaste.it/${query}`, type: 'paste' },
+        { name: 'Rentry', url: `https://rentry.co/${query}`, type: 'paste' },
+        { name: 'Pastefy', url: `https://pastefy.app/${query}`, type: 'paste' },
+        { name: 'Dpaste', url: `https://dpaste.com/${query}`, type: 'paste' },
+        { name: 'Paste.ee', url: `https://paste.ee/p/${query}`, type: 'paste' }
       ];
 
       results.findings.pasteSites = [];
@@ -321,6 +550,18 @@ serve(async (req) => {
         { name: 'Gravatar', url: `https://en.gravatar.com/${query}`, type: 'web' },
         { name: 'WordPress', url: `https://${query}.wordpress.com`, type: 'web' },
         { name: 'Blogger', url: `https://${query}.blogspot.com`, type: 'web' },
+        
+        // International Platforms (10 platforms)
+        { name: 'VK (Russia)', url: `https://vk.com/${query}`, type: 'web' },
+        { name: 'Weibo (China)', url: `https://weibo.com/n/${query}`, type: 'web' },
+        { name: 'Baidu Tieba (China)', url: `https://tieba.baidu.com/home/main?un=${query}`, type: 'web' },
+        { name: 'Douban (China)', url: `https://www.douban.com/people/${query}`, type: 'web' },
+        { name: 'QQ (China)', url: `https://user.qzone.qq.com/${query}`, type: 'web' },
+        { name: 'Line (Japan)', url: `https://line.me/ti/p/${query}`, type: 'web' },
+        { name: 'Naver (Korea)', url: `https://blog.naver.com/${query}`, type: 'web' },
+        { name: 'Odnoklassniki (Russia)', url: `https://ok.ru/${query}`, type: 'web' },
+        { name: 'Yandex Zen (Russia)', url: `https://zen.yandex.ru/@${query}`, type: 'web' },
+        { name: 'Mixi (Japan)', url: `https://mixi.jp/${query}`, type: 'web' },
       ];
 
       results.findings.socialMedia = [];
@@ -608,6 +849,110 @@ serve(async (req) => {
 
       results.findings.darkWebIndicators = darkWebIndicators;
 
+      // GitHub Code Dorks - Search for exposed secrets
+      console.log("Checking GitHub for potential exposed data...");
+      try {
+        const githubDorks = [
+          { query: `${query} password`, risk: 'High', type: 'Credentials' },
+          { query: `${query} api_key OR apikey`, risk: 'High', type: 'API Keys' },
+          { query: `${query} secret_key OR secret`, risk: 'High', type: 'Secrets' },
+          { query: `${query} token`, risk: 'Medium', type: 'Tokens' },
+          { query: `${query} .env`, risk: 'High', type: 'Environment Files' },
+          { query: `${query} credentials`, risk: 'High', type: 'Credentials' },
+          { query: `${query} private_key OR privatekey`, risk: 'Critical', type: 'Private Keys' },
+          { query: `${query} aws_access_key_id`, risk: 'Critical', type: 'AWS Keys' },
+          { query: `${query} filename:config`, risk: 'Medium', type: 'Config Files' },
+          { query: `${query} extension:pem OR extension:key`, risk: 'Critical', type: 'Certificate Files' }
+        ];
+
+        results.findings.githubCodeDorks = {
+          total: githubDorks.length,
+          searches: githubDorks.map(dork => ({
+            query: dork.query,
+            risk: dork.risk,
+            type: dork.type,
+            searchUrl: `https://github.com/search?q=${encodeURIComponent(dork.query)}&type=code`
+          })),
+          note: 'Execute search URLs manually to check for exposed sensitive data in code repositories'
+        };
+      } catch (e) {
+        console.error("GitHub code dorks failed:", e);
+      }
+
+      // EXIF/Metadata Extraction Info
+      console.log("Gathering EXIF extraction capabilities...");
+      try {
+        const avatarUrls = foundPlatforms
+          .filter((p: any) => p.avatarUrl)
+          .map((p: any) => ({ platform: p.platform, url: p.avatarUrl }))
+          .slice(0, 5); // Limit to 5 images
+
+        results.findings.exifCapabilities = {
+          imagesFound: avatarUrls.length,
+          images: avatarUrls,
+          extractableData: [
+            'GPS coordinates (if present)',
+            'Camera make and model',
+            'Date and time taken',
+            'Software used for editing',
+            'Original dimensions',
+            'Color space',
+            'Orientation',
+            'Copyright information'
+          ],
+          note: 'Download images manually and use EXIF extraction tools to analyze metadata'
+        };
+      } catch (e) {
+        console.error("EXIF capabilities check failed:", e);
+      }
+
+      // Reverse Image Search Indicators
+      console.log("Preparing reverse image search indicators...");
+      try {
+        const imageUrls = foundPlatforms
+          .filter((p: any) => p.avatarUrl)
+          .map((p: any) => p.avatarUrl)
+          .slice(0, 5);
+
+        results.findings.reverseImageSearch = {
+          totalImages: imageUrls.length,
+          images: imageUrls,
+          searchEngines: [
+            {
+              name: 'Google Images',
+              url: 'https://images.google.com',
+              method: 'Upload image or paste URL'
+            },
+            {
+              name: 'TinEye',
+              url: 'https://tineye.com',
+              method: 'Upload image or paste URL'
+            },
+            {
+              name: 'Yandex Images',
+              url: 'https://yandex.com/images',
+              method: 'Upload image for best results'
+            },
+            {
+              name: 'Bing Visual Search',
+              url: 'https://www.bing.com/visualsearch',
+              method: 'Upload or paste image URL'
+            }
+          ],
+          note: 'Use these search engines to find where else this image appears online',
+          potentialFindings: [
+            'Other social media profiles',
+            'Dating sites',
+            'Professional networks',
+            'Forums and communities',
+            'News articles or blogs',
+            'Stock photo sources'
+          ]
+        };
+      } catch (e) {
+        console.error("Reverse image search indicators failed:", e);
+      }
+
       // Calculate data richness score
       const dataRichnessScore = Math.round(
         (foundPlatforms.length / platforms.length) * 30 +
@@ -623,6 +968,9 @@ serve(async (req) => {
         foundPlatforms: foundPlatforms.length,
         discoveredEmails: discoveredEmails.size,
         pasteSitesChecked: results.findings.pasteSites?.length || 0,
+        imagesForExif: results.findings.exifCapabilities?.imagesFound || 0,
+        githubDorksGenerated: results.findings.githubCodeDorks?.total || 0,
+        reverseImageSearchReady: results.findings.reverseImageSearch?.totalImages || 0,
         richness: dataRichnessScore >= 70 ? 'High' : dataRichnessScore >= 40 ? 'Medium' : 'Low',
         socialActivity: socialGraph.estimatedActivity,
         riskLevel: darkWebIndicators.riskLevel

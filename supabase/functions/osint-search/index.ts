@@ -130,12 +130,139 @@ serve(async (req) => {
         } catch (e) {
           console.error("Wayback lookup failed:", e);
         }
+
+        // Subdomain enumeration
+        console.log("Enumerating subdomains...");
+        try {
+          const commonSubdomains = ['www', 'mail', 'ftp', 'admin', 'blog', 'shop', 'api', 'dev', 'staging', 'test', 'vpn', 'ssh', 'cdn', 'portal', 'app', 'mobile', 'webmail', 'secure', 'remote', 'support'];
+          const subdomains = [];
+          
+          for (const sub of commonSubdomains) {
+            try {
+              const subDomain = `${sub}.${domain}`;
+              const dnsResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${subDomain}&type=A`, {
+                headers: { 'Accept': 'application/dns-json' }
+              });
+              
+              if (dnsResponse.ok) {
+                const dnsData = await dnsResponse.json();
+                if (dnsData.Answer && dnsData.Answer.length > 0) {
+                  subdomains.push({
+                    subdomain: subDomain,
+                    ips: dnsData.Answer.map((a: any) => a.data)
+                  });
+                }
+              }
+            } catch (e) {
+              // Subdomain doesn't exist, continue
+            }
+          }
+          
+          results.findings.subdomains = {
+            total: subdomains.length,
+            found: subdomains
+          };
+          console.log(`Found ${subdomains.length} subdomains`);
+        } catch (e) {
+          console.error("Subdomain enumeration failed:", e);
+        }
+
+        // Technology stack detection
+        console.log("Detecting technology stack...");
+        try {
+          const siteResponse = await fetch(`https://${domain}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            redirect: 'follow'
+          });
+          
+          const headers = Object.fromEntries(siteResponse.headers.entries());
+          const html = await siteResponse.text();
+          
+          const technologies = {
+            server: headers['server'] || 'Unknown',
+            poweredBy: headers['x-powered-by'] || 'Not disclosed',
+            framework: null as string | null,
+            cms: null as string | null,
+            analytics: [] as string[],
+            cdn: headers['cf-ray'] ? 'Cloudflare' : headers['x-amz-cf-id'] ? 'AWS CloudFront' : 'None detected',
+            security: {
+              https: siteResponse.url.startsWith('https'),
+              hsts: !!headers['strict-transport-security'],
+              csp: !!headers['content-security-policy'],
+              xframe: headers['x-frame-options'] || 'Not set',
+              xss: headers['x-xss-protection'] || 'Not set'
+            }
+          };
+
+          // Detect frameworks and CMS
+          if (html.includes('wp-content') || html.includes('wordpress')) technologies.cms = 'WordPress';
+          if (html.includes('drupal')) technologies.cms = 'Drupal';
+          if (html.includes('joomla')) technologies.cms = 'Joomla';
+          if (html.includes('shopify')) technologies.cms = 'Shopify';
+          if (html.includes('wix')) technologies.cms = 'Wix';
+          
+          if (html.includes('react')) technologies.framework = 'React';
+          if (html.includes('vue')) technologies.framework = 'Vue.js';
+          if (html.includes('angular')) technologies.framework = 'Angular';
+          if (html.includes('next')) technologies.framework = 'Next.js';
+          
+          // Detect analytics
+          if (html.includes('google-analytics') || html.includes('gtag')) technologies.analytics.push('Google Analytics');
+          if (html.includes('facebook.com/tr')) technologies.analytics.push('Facebook Pixel');
+          if (html.includes('hotjar')) technologies.analytics.push('Hotjar');
+          if (html.includes('mixpanel')) technologies.analytics.push('Mixpanel');
+
+          results.findings.techStack = technologies;
+        } catch (e) {
+          console.error("Tech stack detection failed:", e);
+        }
       }
     }
 
     // Username searches - COMPREHENSIVE multi-platform check
     if (type === 'username') {
-      console.log("Running comprehensive username-based searches across 15+ platforms...");
+      console.log("Running comprehensive username-based searches across 47+ platforms...");
+      
+      // Pastebin and paste site searches
+      console.log("Searching paste sites...");
+      const pasteSites = [
+        { name: 'Pastebin', url: `https://pastebin.com/u/${query}`, type: 'profile' },
+        { name: 'GitHub Gists', url: `https://gist.github.com/${query}`, type: 'profile' },
+        { name: 'Ghostbin', url: `https://ghostbin.co/paste/${query}`, type: 'paste' },
+      ];
+
+      results.findings.pasteSites = [];
+      for (const site of pasteSites) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(site.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.status === 200) {
+            const html = await response.text();
+            const notFound = html.toLowerCase().includes('not found') || 
+                           html.toLowerCase().includes('no pastes') ||
+                           html.toLowerCase().includes('404');
+            
+            if (!notFound) {
+              results.findings.pasteSites.push({
+                platform: site.name,
+                found: true,
+                url: site.url,
+                note: 'Potential data exposure found'
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`${site.name} check failed:`, e);
+        }
+      }
       
       const platforms = [
         // Social Media (15 platforms)
@@ -408,6 +535,79 @@ serve(async (req) => {
       results.findings.platformsFound = foundPlatforms.length;
       results.findings.platformsChecked = platforms.length;
       
+      // Social graph mapping
+      console.log("Mapping social graph connections...");
+      const socialGraph: any = {
+        username: query,
+        connections: [],
+        commonThemes: new Set(),
+        estimatedActivity: 'Unknown'
+      };
+
+      foundPlatforms.forEach((platform: any) => {
+        if (platform.found) {
+          socialGraph.connections.push({
+            platform: platform.platform,
+            url: platform.profileUrl,
+            hasAvatar: !!platform.avatarUrl,
+            hasBio: !!(platform.bio || platform.description)
+          });
+
+          // Extract themes from bios
+          if (platform.bio) {
+            const keywords = ['developer', 'designer', 'artist', 'gamer', 'creator', 'entrepreneur', 'student', 'engineer'];
+            keywords.forEach(keyword => {
+              if (platform.bio.toLowerCase().includes(keyword)) {
+                socialGraph.commonThemes.add(keyword);
+              }
+            });
+          }
+        }
+      });
+
+      socialGraph.commonThemes = Array.from(socialGraph.commonThemes);
+      
+      // Estimate activity level
+      const activityScore = foundPlatforms.length;
+      if (activityScore >= 15) socialGraph.estimatedActivity = 'Very Active';
+      else if (activityScore >= 8) socialGraph.estimatedActivity = 'Active';
+      else if (activityScore >= 3) socialGraph.estimatedActivity = 'Moderate';
+      else socialGraph.estimatedActivity = 'Low';
+
+      results.findings.socialGraph = socialGraph;
+
+      // Dark web monitoring indicators
+      console.log("Checking dark web exposure indicators...");
+      const darkWebIndicators = {
+        breachExposure: results.findings.breaches?.error ? 'Unknown' : 'Check breach data',
+        pasteExposure: (results.findings.pasteSites?.length || 0) > 0 ? 'Found' : 'None detected',
+        riskLevel: 'Low',
+        recommendations: [] as string[]
+      };
+
+      // Calculate risk level
+      const riskFactors = [
+        discoveredEmails.size > 0,
+        (results.findings.pasteSites?.length || 0) > 0,
+        foundPlatforms.length > 20,
+        foundPlatforms.some((p: any) => p.email)
+      ].filter(Boolean).length;
+
+      if (riskFactors >= 3) {
+        darkWebIndicators.riskLevel = 'High';
+        darkWebIndicators.recommendations.push('Consider using unique passwords per service');
+        darkWebIndicators.recommendations.push('Enable 2FA on all accounts');
+        darkWebIndicators.recommendations.push('Review and limit public information exposure');
+      } else if (riskFactors >= 1) {
+        darkWebIndicators.riskLevel = 'Medium';
+        darkWebIndicators.recommendations.push('Enable 2FA where available');
+        darkWebIndicators.recommendations.push('Regular password updates recommended');
+      } else {
+        darkWebIndicators.recommendations.push('Maintain good security practices');
+      }
+
+      results.findings.darkWebIndicators = darkWebIndicators;
+
       // Calculate data richness score
       const dataRichnessScore = Math.round(
         (foundPlatforms.length / platforms.length) * 30 +
@@ -422,12 +622,16 @@ serve(async (req) => {
         totalPlatforms: platforms.length,
         foundPlatforms: foundPlatforms.length,
         discoveredEmails: discoveredEmails.size,
-        richness: dataRichnessScore >= 70 ? 'High' : dataRichnessScore >= 40 ? 'Medium' : 'Low'
+        pasteSitesChecked: results.findings.pasteSites?.length || 0,
+        richness: dataRichnessScore >= 70 ? 'High' : dataRichnessScore >= 40 ? 'Medium' : 'Low',
+        socialActivity: socialGraph.estimatedActivity,
+        riskLevel: darkWebIndicators.riskLevel
       };
       
       console.log(`Found ${foundPlatforms.length}/${platforms.length} platforms for ${query}`);
       console.log(`Discovered ${discoveredEmails.size} emails from profiles`);
       console.log(`Data richness score: ${dataRichnessScore}/100`);
+      console.log(`Risk level: ${darkWebIndicators.riskLevel}`);
     }
 
     // Phone searches

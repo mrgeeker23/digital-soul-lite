@@ -34,7 +34,28 @@ serve(async (req) => {
 
     // Email-based searches
     if (type === 'email' || query.includes('@')) {
-      console.log("Running email-based searches...");
+      console.log("Running comprehensive email-based searches...");
+      
+      const [localPart, domain] = query.split('@');
+      
+      // Email pattern intelligence
+      results.findings.emailIntelligence = {
+        localPart,
+        domain,
+        isValid: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query),
+        possibleUsernames: [
+          localPart,
+          localPart.replace(/[._-]/g, ''),
+          localPart.split(/[._-]/)[0],
+          localPart.toLowerCase()
+        ],
+        commonVariations: [
+          `${localPart}@gmail.com`,
+          `${localPart}@outlook.com`,
+          `${localPart}@yahoo.com`,
+          `${localPart}@hotmail.com`
+        ].filter(e => e !== query)
+      };
       
       // Breach check
       try {
@@ -48,8 +69,40 @@ serve(async (req) => {
         results.findings.breaches = { error: errorMessage };
       }
 
+      // Public footprint checks
+      const footprintChecks = [
+        { name: 'Gravatar', url: `https://gravatar.com/${localPart}`, type: 'profile' },
+        { name: 'GitHub (email)', url: `https://api.github.com/search/users?q=${query}`, type: 'api' },
+      ];
+
+      results.findings.publicFootprint = [];
+      for (const check of footprintChecks) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(check.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.status === 200) {
+            const data = check.type === 'api' ? await response.json() : null;
+            results.findings.publicFootprint.push({
+              platform: check.name,
+              found: true,
+              url: check.url,
+              data: data?.total_count > 0 ? data.items[0] : null
+            });
+          }
+        } catch (e) {
+          console.error(`${check.name} check failed:`, e);
+        }
+      }
+
       // Extract domain for additional lookups
-      const domain = query.split('@')[1];
       if (domain) {
         try {
           const dnsRes = await supabase.functions.invoke('dns-whois-lookup', {
@@ -67,6 +120,15 @@ serve(async (req) => {
           results.findings.certificates = certRes.data;
         } catch (e) {
           console.error("Cert lookup failed:", e);
+        }
+
+        try {
+          const waybackRes = await supabase.functions.invoke('wayback-lookup', {
+            body: { domain }
+          });
+          results.findings.wayback = waybackRes.data;
+        } catch (e) {
+          console.error("Wayback lookup failed:", e);
         }
       }
     }
@@ -329,11 +391,102 @@ serve(async (req) => {
 
     // Phone searches
     if (type === 'phone') {
-      console.log("Running phone-based searches...");
-      results.findings.phone = {
-        message: "Phone lookup requires additional API integration",
-        formatted: query
+      console.log("Running comprehensive phone-based searches...");
+      
+      // Clean phone number
+      const cleaned = query.replace(/\D/g, '');
+      
+      // Basic validation and formatting
+      const phoneIntelligence: any = {
+        original: query,
+        cleaned,
+        isValid: cleaned.length >= 10 && cleaned.length <= 15,
+        length: cleaned.length
       };
+
+      // Detect country code
+      if (cleaned.startsWith('1') && cleaned.length === 11) {
+        phoneIntelligence.country = 'US/Canada';
+        phoneIntelligence.countryCode = '+1';
+        phoneIntelligence.formatted = `+1 (${cleaned.substring(1, 4)}) ${cleaned.substring(4, 7)}-${cleaned.substring(7)}`;
+      } else if (cleaned.startsWith('44')) {
+        phoneIntelligence.country = 'UK';
+        phoneIntelligence.countryCode = '+44';
+      } else if (cleaned.startsWith('91')) {
+        phoneIntelligence.country = 'India';
+        phoneIntelligence.countryCode = '+91';
+      } else if (cleaned.startsWith('86')) {
+        phoneIntelligence.country = 'China';
+        phoneIntelligence.countryCode = '+86';
+      } else if (cleaned.startsWith('61')) {
+        phoneIntelligence.country = 'Australia';
+        phoneIntelligence.countryCode = '+61';
+      }
+
+      // Spam report checks
+      const spamChecks = [
+        { name: 'WhoCalledMe', url: `https://whocalled.me/${cleaned}` },
+        { name: 'CallerId', url: `https://calleridtest.com/number/${cleaned}` }
+      ];
+
+      phoneIntelligence.spamReports = [];
+      for (const check of spamChecks) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(check.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.status === 200) {
+            const html = await response.text();
+            phoneIntelligence.spamReports.push({
+              platform: check.name,
+              found: !html.toLowerCase().includes('not found'),
+              url: check.url
+            });
+          }
+        } catch (e) {
+          console.error(`${check.name} check failed:`, e);
+        }
+      }
+
+      results.findings.phone = phoneIntelligence;
+    }
+
+    // AI-Powered Analysis
+    console.log("Running AI-powered analysis...");
+    try {
+      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+      if (LOVABLE_API_KEY) {
+        const analysisPrompt = `Analyze this OSINT data and provide insights about digital footprint, privacy risks, and behavioral patterns:\n\n${JSON.stringify(results.findings, null, 2)}\n\nProvide a concise analysis covering:\n1. Digital footprint strength (1-10)\n2. Privacy risk assessment\n3. Key findings\n4. Recommendations`;
+
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              { role: 'system', content: 'You are an OSINT analysis expert. Provide clear, actionable insights.' },
+              { role: 'user', content: analysisPrompt }
+            ],
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          results.findings.aiAnalysis = aiData.choices[0].message.content;
+        }
+      }
+    } catch (e) {
+      console.error("AI analysis failed:", e);
     }
 
     console.log("OSINT search complete");

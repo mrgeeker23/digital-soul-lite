@@ -113,6 +113,7 @@ serve(async (req) => {
 
       results.findings.socialMedia = [];
       results.findings.profileDetails = {};
+      results.findings.discoveredEmails = [];
 
       // Check all platforms in parallel for speed
       const checks = platforms.map(async (platform) => {
@@ -235,8 +236,14 @@ serve(async (req) => {
                 following: profileData.following,
                 createdAt: profileData.created_at,
                 avatarUrl: profileData.avatar_url,
-                profileUrl: profileData.html_url
+                profileUrl: profileData.html_url,
+                email: profileData.email || null
               };
+              
+              // Extract email if available
+              if (profileData.email) {
+                return { ...extractedInfo, foundEmail: profileData.email };
+              }
             }
             // Reddit
             else if (platform.name === 'Reddit' && profileData.data) {
@@ -279,12 +286,45 @@ serve(async (req) => {
       // Wait for all checks to complete
       results.findings.socialMedia = await Promise.all(checks);
       
+      // Extract discovered emails from profiles
+      const emailPattern = /[\w.-]+@[\w.-]+\.\w+/g;
+      const discoveredEmails = new Set<string>();
+      
+      results.findings.socialMedia.forEach((platform: any) => {
+        // Check for direct email field
+        if (platform.foundEmail) {
+          discoveredEmails.add(platform.foundEmail);
+        }
+        if (platform.email) {
+          discoveredEmails.add(platform.email);
+        }
+        
+        // Extract from bio/description
+        if (platform.bio) {
+          const bioEmails = platform.bio.match(emailPattern);
+          if (bioEmails) bioEmails.forEach((e: string) => discoveredEmails.add(e));
+        }
+        if (platform.description) {
+          const descEmails = platform.description.match(emailPattern);
+          if (descEmails) descEmails.forEach((e: string) => discoveredEmails.add(e));
+        }
+      });
+      
+      // Generate potential email patterns
+      const cleanQuery = query.replace('@', '');
+      const commonDomains = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'protonmail.com'];
+      const potentialEmails = commonDomains.map(domain => `${cleanQuery}@${domain}`);
+      
+      results.findings.discoveredEmails = Array.from(discoveredEmails);
+      results.findings.potentialEmails = potentialEmails;
+      
       // Count found platforms
       const foundPlatforms = results.findings.socialMedia.filter((p: any) => p.found);
       results.findings.platformsFound = foundPlatforms.length;
       results.findings.platformsChecked = platforms.length;
       
       console.log(`Found ${foundPlatforms.length}/${platforms.length} platforms for ${query}`);
+      console.log(`Discovered ${discoveredEmails.size} emails from profiles`);
     }
 
     // Phone searches

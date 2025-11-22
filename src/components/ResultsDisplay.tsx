@@ -11,6 +11,11 @@ import {
   Database
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { RiskScoreMeter } from "./RiskScoreMeter";
+import { DataRichnessChart } from "./DataRichnessChart";
+import { ThreatIndicators } from "./ThreatIndicators";
+import { NetworkGraphCard } from "./NetworkGraphCard";
+import { SummaryDashboard } from "./SummaryDashboard";
 
 interface ResultsDisplayProps {
   results: any;
@@ -21,13 +26,66 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
 
   const { query, type, timestamp, findings } = results;
 
+  // Calculate risk score
+  const calculateRiskScore = () => {
+    let score = 0;
+    if (findings.breaches?.found) score += findings.breaches.count * 10;
+    if (findings.darkWebMonitoring?.riskLevel === "high") score += 30;
+    if (findings.darkWebMonitoring?.riskLevel === "medium") score += 15;
+    if (findings.exposedFiles?.found) score += 20;
+    if (findings.pasteFindings?.found) score += findings.pasteFindings.count * 5;
+    return Math.min(score, 100);
+  };
+
+  const riskScore = calculateRiskScore();
+
+  // Prepare data richness categories
+  const dataCategories = [
+    {
+      name: "Social Platforms",
+      value: findings.platformsFound || 0,
+      max: findings.platformsChecked || 57,
+      color: "hsl(var(--chart-1))",
+    },
+    {
+      name: "Subdomains",
+      value: findings.subdomainEnumeration?.found || 0,
+      max: 100,
+      color: "hsl(var(--chart-2))",
+    },
+    {
+      name: "DNS Records",
+      value: findings.enhancedDNS?.recordsFound || 0,
+      max: 10,
+      color: "hsl(var(--chart-3))",
+    },
+    {
+      name: "Paste Sites",
+      value: findings.pasteFindings?.found ? findings.pasteFindings.count : 0,
+      max: 10,
+      color: "hsl(var(--chart-4))",
+    },
+  ];
+
+  // Prepare network graph connections
+  const networkConnections = findings.socialMedia
+    ?.filter((p: any) => p.found)
+    .map((p: any) => ({
+      platform: p.platform,
+      username: p.username,
+      url: p.profileUrl,
+      followers: p.followers,
+      connectionStrength: p.followers > 1000 ? 80 : p.followers > 100 ? 50 : 30,
+    })) || [];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header Card */}
       <Card className="border-primary/20 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5 text-primary" />
-            Search Results: {query}
+            OSINT Analysis: {query}
           </CardTitle>
           <CardDescription>
             Type: {type} | Timestamp: {new Date(timestamp).toLocaleString()}
@@ -35,75 +93,43 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
         </CardHeader>
       </Card>
 
-      {/* Summary Stats Card */}
+      {/* Summary Dashboard */}
       {findings.socialMedia && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Platforms Found
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {findings.platformsFound || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                out of {findings.platformsChecked || 0} checked
-              </p>
-            </CardContent>
-          </Card>
+        <SummaryDashboard
+          platformsFound={findings.platformsFound || 0}
+          platformsChecked={findings.platformsChecked || 0}
+          breachCount={findings.breaches?.count || 0}
+          subdomains={findings.subdomainEnumeration?.found || 0}
+          dataPoints={Object.keys(findings).length}
+          riskScore={riskScore}
+        />
+      )}
 
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Data Points
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {Object.keys(findings).length}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                information categories
-              </p>
-            </CardContent>
-          </Card>
+      {/* Risk Assessment and Data Visualization */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <RiskScoreMeter 
+          score={riskScore}
+          description="Overall security risk based on findings"
+        />
+        <DataRichnessChart categories={dataCategories} />
+      </div>
 
-          {findings.breaches && findings.breaches.found && (
-            <Card className="border-destructive/50 bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-destructive">
-                  Security Alert
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">
-                  {findings.breaches.count || 0}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  breaches detected
-                </p>
-              </CardContent>
-            </Card>
-          )}
+      {/* Threat Indicators */}
+      <ThreatIndicators
+        breachCount={findings.breaches?.count || 0}
+        darkWebExposure={findings.darkWebMonitoring?.indicatorsFound || false}
+        exposedFiles={findings.exposedFiles?.found ? findings.exposedFiles.count : 0}
+        subdomains={findings.subdomainEnumeration?.found || 0}
+        sslIssues={findings.sslAnalysis?.issues || false}
+        pasteFindings={findings.pasteFindings?.found ? findings.pasteFindings.count : 0}
+      />
 
-          <Card className="border-border bg-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Digital Footprint
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {findings.platformsFound > 10 ? 'High' : findings.platformsFound > 5 ? 'Medium' : 'Low'}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                exposure level
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Network Graph */}
+      {networkConnections.length > 0 && (
+        <NetworkGraphCard
+          centerNode={query}
+          connections={networkConnections}
+        />
       )}
 
       {/* Breach Data */}

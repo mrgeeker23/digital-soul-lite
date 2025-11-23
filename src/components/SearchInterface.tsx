@@ -52,6 +52,13 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
 
       // Increment usage counter after successful call
       apiRateLimiter.incrementUsage('osint-search');
+      
+      // Increment usage for each API that was actually called
+      if (data.apisUsed && Array.isArray(data.apisUsed)) {
+        data.apisUsed.forEach((apiName: string) => {
+          apiRateLimiter.incrementUsage(apiName);
+        });
+      }
 
       console.log("Search results:", data);
       

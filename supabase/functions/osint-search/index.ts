@@ -29,7 +29,8 @@ serve(async (req) => {
       query,
       type,
       timestamp: new Date().toISOString(),
-      findings: {}
+      findings: {},
+      apisUsed: [] // Track which APIs were called
     };
 
     // Email-based searches
@@ -63,6 +64,7 @@ serve(async (req) => {
           body: { email: query }
         });
         results.findings.breaches = breachRes.data;
+        results.apisUsed.push('breach-check');
       } catch (e) {
         console.error("Breach check failed:", e);
         const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -109,6 +111,7 @@ serve(async (req) => {
             body: { domain }
           });
           results.findings.dns = dnsRes.data;
+          results.apisUsed.push('dns-whois-lookup');
         } catch (e) {
           console.error("DNS lookup failed:", e);
         }
@@ -118,6 +121,7 @@ serve(async (req) => {
             body: { domain }
           });
           results.findings.certificates = certRes.data;
+          results.apisUsed.push('cert-transparency');
         } catch (e) {
           console.error("Cert lookup failed:", e);
         }
@@ -127,6 +131,7 @@ serve(async (req) => {
             body: { domain }
           });
           results.findings.wayback = waybackRes.data;
+          results.apisUsed.push('wayback-lookup');
         } catch (e) {
           console.error("Wayback lookup failed:", e);
         }

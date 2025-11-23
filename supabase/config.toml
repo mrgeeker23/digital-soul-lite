@@ -1,1 +1,16 @@
 project_id = "eovsnrdxjkowfnnhpaeg"
+
+[functions.osint-search]
+verify_jwt = false
+
+[functions.breach-check]
+verify_jwt = false
+
+[functions.dns-whois-lookup]
+verify_jwt = false
+
+[functions.wayback-lookup]
+verify_jwt = false
+
+[functions.cert-transparency]
+verify_jwt = false

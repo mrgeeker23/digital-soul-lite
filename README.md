@@ -1,73 +1,50 @@
-# Welcome to your Lovable project
+# DigitalSoul Lite
 
-## Project info
+**OSINT & Digital Footprint Intelligence Platform**
 
-**URL**: https://lovable.dev/projects/230bce95-4d7e-4364-a8b3-b73002ace03b
+A comprehensive open-source intelligence (OSINT) analysis tool for understanding digital exposure and security posture.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- **Social Media Intelligence** - Scan 24+ platforms for username presence
+- **Data Breach Detection** - Check exposure in known data breaches
+- **DNS/WHOIS Lookup** - Domain infrastructure analysis
+- **Certificate Transparency** - SSL/TLS certificate discovery
+- **Web Archive Analysis** - Historical website snapshots via Wayback Machine
+- **Risk Scoring** - AI-powered threat assessment
 
-**Use Lovable**
+## Tech Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/230bce95-4d7e-4364-a8b3-b73002ace03b) and start prompting.
+- React + TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui
+- Supabase Edge Functions
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting Started
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Install dependencies
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## API Rate Limits
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+| API | Daily Limit |
+|-----|-------------|
+| OSINT Search | 100 |
+| Breach Check | 25 |
+| DNS/WHOIS | 50 |
+| Wayback Machine | 30 |
+| Cert Transparency | 50 |
 
-**Use GitHub Codespaces**
+## Author
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+**abdulabdul technologies**
 
-## What technologies are used for this project?
+---
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/230bce95-4d7e-4364-a8b3-b73002ace03b) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+*Built for cybersecurity research and digital footprint analysis*

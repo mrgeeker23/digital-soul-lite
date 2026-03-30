@@ -309,6 +309,7 @@ serve(async (req) => {
         if (sslResult.status === 'fulfilled') results.findings.sslAnalysis = sslResult.value;
         if (techResult.status === 'fulfilled') results.findings.techStack = techResult.value;
       }
+    }
 
     // Username searches - COMPREHENSIVE multi-platform check
     if (type === 'username') {

@@ -58,391 +58,256 @@ serve(async (req) => {
         ].filter(e => e !== query)
       };
       
-      // Breach check
-      try {
-        const breachRes = await supabase.functions.invoke('breach-check', {
-          body: { email: query }
-        });
-        results.findings.breaches = breachRes.data;
-        results.apisUsed.push('breach-check');
-      } catch (e) {
-        console.error("Breach check failed:", e);
-        const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-        results.findings.breaches = { error: errorMessage };
-      }
-
-      // Public footprint checks
-      const footprintChecks = [
-        { name: 'Gravatar', url: `https://gravatar.com/${localPart}`, type: 'profile' },
-        { name: 'GitHub (email)', url: `https://api.github.com/search/users?q=${query}`, type: 'api' },
-      ];
-
-      results.findings.publicFootprint = [];
-      for (const check of footprintChecks) {
-        try {
+      // === PHASE 1: Parallel sub-function calls + footprint checks ===
+      const [breachResult, dnsResult, certResult, waybackResult, ...footprintResults] = await Promise.allSettled([
+        // Sub-function calls in parallel
+        supabase.functions.invoke('breach-check', { body: { email: query } }),
+        domain ? supabase.functions.invoke('dns-whois-lookup', { body: { domain } }) : Promise.resolve(null),
+        domain ? supabase.functions.invoke('cert-transparency', { body: { domain } }) : Promise.resolve(null),
+        domain ? supabase.functions.invoke('wayback-lookup', { body: { domain } }) : Promise.resolve(null),
+        // Footprint checks in parallel
+        ...[
+          { name: 'Gravatar', url: `https://gravatar.com/${localPart}`, type: 'profile' },
+          { name: 'GitHub (email)', url: `https://api.github.com/search/users?q=${query}`, type: 'api' },
+        ].map(async (check) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000);
-          
-          const response = await fetch(check.url, {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (response.status === 200) {
-            const data = check.type === 'api' ? await response.json() : null;
-            results.findings.publicFootprint.push({
-              platform: check.name,
-              found: true,
-              url: check.url,
-              data: data?.total_count > 0 ? data.items[0] : null
+          try {
+            const response = await fetch(check.url, {
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+              signal: controller.signal
             });
-          }
-        } catch (e) {
-          console.error(`${check.name} check failed:`, e);
-        }
+            clearTimeout(timeoutId);
+            if (response.status === 200) {
+              const data = check.type === 'api' ? await response.json() : null;
+              return { platform: check.name, found: true, url: check.url, data: data?.total_count > 0 ? data.items[0] : null };
+            }
+            return null;
+          } catch { clearTimeout(timeoutId); return null; }
+        })
+      ]);
+
+      // Process sub-function results
+      if (breachResult.status === 'fulfilled' && breachResult.value?.data) {
+        results.findings.breaches = breachResult.value.data;
+        results.apisUsed.push('breach-check');
+      } else {
+        results.findings.breaches = { error: 'Breach check failed' };
       }
 
-      // Extract domain for additional lookups
+      if (dnsResult.status === 'fulfilled' && dnsResult.value?.data) {
+        results.findings.dns = dnsResult.value.data;
+        results.apisUsed.push('dns-whois-lookup');
+      }
+
+      if (certResult.status === 'fulfilled' && certResult.value?.data) {
+        results.findings.certificates = certResult.value.data;
+        results.apisUsed.push('cert-transparency');
+      }
+
+      if (waybackResult.status === 'fulfilled' && waybackResult.value?.data) {
+        results.findings.wayback = waybackResult.value.data;
+        results.apisUsed.push('wayback-lookup');
+      }
+
+      // Process footprint results
+      results.findings.publicFootprint = footprintResults
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value != null)
+        .map(r => r.value);
+
+      // === PHASE 2: Domain analysis (only if domain exists) ===
       if (domain) {
-        try {
-          const dnsRes = await supabase.functions.invoke('dns-whois-lookup', {
-            body: { domain }
-          });
-          results.findings.dns = dnsRes.data;
-          results.apisUsed.push('dns-whois-lookup');
-        } catch (e) {
-          console.error("DNS lookup failed:", e);
-        }
-
-        try {
-          const certRes = await supabase.functions.invoke('cert-transparency', {
-            body: { domain }
-          });
-          results.findings.certificates = certRes.data;
-          results.apisUsed.push('cert-transparency');
-        } catch (e) {
-          console.error("Cert lookup failed:", e);
-        }
-
-        try {
-          const waybackRes = await supabase.functions.invoke('wayback-lookup', {
-            body: { domain }
-          });
-          results.findings.wayback = waybackRes.data;
-          results.apisUsed.push('wayback-lookup');
-        } catch (e) {
-          console.error("Wayback lookup failed:", e);
-        }
-
-        // Expanded subdomain enumeration (100+ subdomains)
+        // Subdomain enumeration - batched parallel (20 concurrent)
         console.log("Enumerating subdomains (100+ checks)...");
-        try {
-          const commonSubdomains = [
-            'www', 'mail', 'ftp', 'admin', 'blog', 'shop', 'api', 'dev', 'staging', 'test', 'vpn', 'ssh', 'cdn', 'portal', 'app', 'mobile', 'webmail', 'secure', 'remote', 'support',
-            'beta', 'alpha', 'demo', 'sandbox', 'qa', 'uat', 'prod', 'www2', 'old', 'new', 'backup', 'store', 'mail2', 'smtp', 'pop', 'imap', 'mx', 'ns1', 'ns2', 'dns',
-            'cpanel', 'whm', 'panel', 'manage', 'dashboard', 'control', 'login', 'signin', 'signup', 'register', 'auth', 'oauth', 'sso',
-            'forum', 'community', 'wiki', 'docs', 'help', 'support', 'status', 'monitoring', 'stats', 'analytics', 'metrics',
-            'files', 'download', 'upload', 'assets', 'static', 'media', 'img', 'images', 'video', 'videos', 'audio',
-            'db', 'database', 'mysql', 'postgres', 'mongo', 'redis', 'cache', 'queue', 'worker', 'jobs',
-            'git', 'svn', 'repo', 'code', 'ci', 'jenkins', 'build', 'deploy',
-            'crm', 'erp', 'hr', 'finance', 'sales', 'marketing', 'invoice', 'billing', 'payment', 'checkout',
-            'track', 'tracking', 'pixel', 'tag', 'event', 'log', 'logs', 'syslog',
-            'web', 'www1', 'www3', 'site', 'host', 'server', 'cloud', 'edge'
-          ];
-          const subdomains = [];
-          
-          for (const sub of commonSubdomains) {
-            try {
+        const commonSubdomains = [
+          'www', 'mail', 'ftp', 'admin', 'blog', 'shop', 'api', 'dev', 'staging', 'test', 'vpn', 'ssh', 'cdn', 'portal', 'app', 'mobile', 'webmail', 'secure', 'remote', 'support',
+          'beta', 'alpha', 'demo', 'sandbox', 'qa', 'uat', 'prod', 'www2', 'old', 'new', 'backup', 'store', 'mail2', 'smtp', 'pop', 'imap', 'mx', 'ns1', 'ns2', 'dns',
+          'cpanel', 'whm', 'panel', 'manage', 'dashboard', 'control', 'login', 'signin', 'signup', 'register', 'auth', 'oauth', 'sso',
+          'forum', 'community', 'wiki', 'docs', 'help', 'support', 'status', 'monitoring', 'stats', 'analytics', 'metrics',
+          'files', 'download', 'upload', 'assets', 'static', 'media', 'img', 'images', 'video', 'videos', 'audio',
+          'db', 'database', 'mysql', 'postgres', 'mongo', 'redis', 'cache', 'queue', 'worker', 'jobs',
+          'git', 'svn', 'repo', 'code', 'ci', 'jenkins', 'build', 'deploy',
+          'crm', 'erp', 'hr', 'finance', 'sales', 'marketing', 'invoice', 'billing', 'payment', 'checkout',
+          'track', 'tracking', 'pixel', 'tag', 'event', 'log', 'logs', 'syslog',
+          'web', 'www1', 'www3', 'site', 'host', 'server', 'cloud', 'edge'
+        ];
+
+        const subdomains: any[] = [];
+        const BATCH_SIZE = 20;
+        for (let i = 0; i < commonSubdomains.length; i += BATCH_SIZE) {
+          const batch = commonSubdomains.slice(i, i + BATCH_SIZE);
+          const batchResults = await Promise.allSettled(
+            batch.map(async (sub) => {
               const subDomain = `${sub}.${domain}`;
               const dnsResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${subDomain}&type=A`, {
                 headers: { 'Accept': 'application/dns-json' }
               });
-              
               if (dnsResponse.ok) {
                 const dnsData = await dnsResponse.json();
                 if (dnsData.Answer && dnsData.Answer.length > 0) {
-                  subdomains.push({
-                    subdomain: subDomain,
-                    ips: dnsData.Answer.map((a: any) => a.data)
-                  });
+                  return { subdomain: subDomain, ips: dnsData.Answer.map((a: any) => a.data) };
                 }
               }
-            } catch (e) {
-              // Subdomain doesn't exist, continue
-            }
-          }
-          
-          results.findings.subdomains = {
-            total: subdomains.length,
-            found: subdomains,
-            checked: commonSubdomains.length
-          };
-          console.log(`Found ${subdomains.length}/${commonSubdomains.length} subdomains`);
-        } catch (e) {
-          console.error("Subdomain enumeration failed:", e);
+              return null;
+            })
+          );
+          batchResults.forEach(r => {
+            if (r.status === 'fulfilled' && r.value) subdomains.push(r.value);
+          });
         }
 
-        // Enhanced DNS Analysis (MX, TXT, SPF, DKIM, DMARC)
-        console.log("Performing enhanced DNS analysis...");
-        try {
-          const dnsRecords: any = {
-            A: [],
-            MX: [],
-            TXT: [],
-            NS: [],
-            SOA: null,
-            SPF: null,
-            DMARC: null,
-            DKIM: null
-          };
+        results.findings.subdomains = { total: subdomains.length, found: subdomains, checked: commonSubdomains.length };
+        console.log(`Found ${subdomains.length}/${commonSubdomains.length} subdomains`);
 
-          // A records
-          const aResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=A`, {
-            headers: { 'Accept': 'application/dns-json' }
-          });
-          if (aResponse.ok) {
-            const aData = await aResponse.json();
-            if (aData.Answer) {
-              dnsRecords.A = aData.Answer.map((a: any) => a.data);
+        // === PHASE 3: Enhanced DNS + IP geolocation + SSL + tech stack + deliverability + dorks — ALL parallel ===
+        console.log("Running parallel DNS analysis, IP geo, SSL, tech stack...");
+
+        const [enhancedDnsResult, sslResult, techResult] = await Promise.allSettled([
+          // Enhanced DNS analysis
+          (async () => {
+            const dnsRecords: any = { A: [], MX: [], TXT: [], NS: [], SOA: null, SPF: null, DMARC: null, DKIM: null };
+            const [aRes, mxRes, txtRes, dmarcRes] = await Promise.allSettled([
+              fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=A`, { headers: { 'Accept': 'application/dns-json' } }),
+              fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=MX`, { headers: { 'Accept': 'application/dns-json' } }),
+              fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=TXT`, { headers: { 'Accept': 'application/dns-json' } }),
+              fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, { headers: { 'Accept': 'application/dns-json' } }),
+            ]);
+            if (aRes.status === 'fulfilled' && aRes.value.ok) {
+              const d = await aRes.value.json();
+              if (d.Answer) dnsRecords.A = d.Answer.map((a: any) => a.data);
             }
-          }
-
-          // MX records
-          const mxResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=MX`, {
-            headers: { 'Accept': 'application/dns-json' }
-          });
-          if (mxResponse.ok) {
-            const mxData = await mxResponse.json();
-            if (mxData.Answer) {
-              dnsRecords.MX = mxData.Answer.map((mx: any) => ({
-                priority: mx.data.split(' ')[0],
-                server: mx.data.split(' ')[1]
-              }));
+            if (mxRes.status === 'fulfilled' && mxRes.value.ok) {
+              const d = await mxRes.value.json();
+              if (d.Answer) dnsRecords.MX = d.Answer.map((mx: any) => ({ priority: mx.data.split(' ')[0], server: mx.data.split(' ')[1] }));
             }
-          }
-
-          // TXT records (SPF, DMARC, etc.)
-          const txtResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=TXT`, {
-            headers: { 'Accept': 'application/dns-json' }
-          });
-          if (txtResponse.ok) {
-            const txtData = await txtResponse.json();
-            if (txtData.Answer) {
-              dnsRecords.TXT = txtData.Answer.map((txt: any) => txt.data);
-              
-              // Extract SPF
-              const spfRecord = dnsRecords.TXT.find((r: string) => r.includes('v=spf1'));
-              if (spfRecord) dnsRecords.SPF = spfRecord;
+            if (txtRes.status === 'fulfilled' && txtRes.value.ok) {
+              const d = await txtRes.value.json();
+              if (d.Answer) {
+                dnsRecords.TXT = d.Answer.map((txt: any) => txt.data);
+                const spf = dnsRecords.TXT.find((r: string) => r.includes('v=spf1'));
+                if (spf) dnsRecords.SPF = spf;
+              }
             }
-          }
-
-          // DMARC record
-          const dmarcResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, {
-            headers: { 'Accept': 'application/dns-json' }
-          });
-          if (dmarcResponse.ok) {
-            const dmarcData = await dmarcResponse.json();
-            if (dmarcData.Answer) {
-              dnsRecords.DMARC = dmarcData.Answer[0]?.data;
+            if (dmarcRes.status === 'fulfilled' && dmarcRes.value.ok) {
+              const d = await dmarcRes.value.json();
+              if (d.Answer) dnsRecords.DMARC = d.Answer[0]?.data;
             }
-          }
+            return dnsRecords;
+          })(),
+          // SSL/TLS Analysis
+          (async () => {
+            const sslResponse = await fetch(`https://${domain}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            const sslInfo: any = {
+              enabled: sslResponse.url.startsWith('https'),
+              redirectsToHttps: !sslResponse.url.startsWith('https://www.') && sslResponse.url.startsWith('https'),
+              headers: {
+                strictTransportSecurity: sslResponse.headers.get('strict-transport-security'),
+                contentSecurityPolicy: sslResponse.headers.get('content-security-policy'),
+                xFrameOptions: sslResponse.headers.get('x-frame-options'),
+                xContentTypeOptions: sslResponse.headers.get('x-content-type-options'),
+                referrerPolicy: sslResponse.headers.get('referrer-policy')
+              },
+              score: 0
+            };
+            if (sslInfo.enabled) sslInfo.score += 30;
+            if (sslInfo.headers.strictTransportSecurity) sslInfo.score += 25;
+            if (sslInfo.headers.contentSecurityPolicy) sslInfo.score += 20;
+            if (sslInfo.headers.xFrameOptions) sslInfo.score += 15;
+            if (sslInfo.headers.xContentTypeOptions) sslInfo.score += 10;
+            sslInfo.rating = sslInfo.score >= 80 ? 'Excellent' : sslInfo.score >= 60 ? 'Good' : sslInfo.score >= 40 ? 'Fair' : 'Poor';
+            await sslResponse.text(); // consume body
+            return sslInfo;
+          })(),
+          // Technology stack detection
+          (async () => {
+            const siteResponse = await fetch(`https://${domain}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, redirect: 'follow' });
+            const headers = Object.fromEntries(siteResponse.headers.entries());
+            const html = await siteResponse.text();
+            const technologies: any = {
+              server: headers['server'] || 'Unknown',
+              poweredBy: headers['x-powered-by'] || 'Not disclosed',
+              framework: null, cms: null, analytics: [] as string[],
+              cdn: headers['cf-ray'] ? 'Cloudflare' : headers['x-amz-cf-id'] ? 'AWS CloudFront' : 'None detected',
+              security: { https: siteResponse.url.startsWith('https'), hsts: !!headers['strict-transport-security'], csp: !!headers['content-security-policy'], xframe: headers['x-frame-options'] || 'Not set', xss: headers['x-xss-protection'] || 'Not set' }
+            };
+            if (html.includes('wp-content') || html.includes('wordpress')) technologies.cms = 'WordPress';
+            if (html.includes('drupal')) technologies.cms = 'Drupal';
+            if (html.includes('joomla')) technologies.cms = 'Joomla';
+            if (html.includes('shopify')) technologies.cms = 'Shopify';
+            if (html.includes('wix')) technologies.cms = 'Wix';
+            if (html.includes('react')) technologies.framework = 'React';
+            if (html.includes('vue')) technologies.framework = 'Vue.js';
+            if (html.includes('angular')) technologies.framework = 'Angular';
+            if (html.includes('next')) technologies.framework = 'Next.js';
+            if (html.includes('google-analytics') || html.includes('gtag')) technologies.analytics.push('Google Analytics');
+            if (html.includes('facebook.com/tr')) technologies.analytics.push('Facebook Pixel');
+            if (html.includes('hotjar')) technologies.analytics.push('Hotjar');
+            if (html.includes('mixpanel')) technologies.analytics.push('Mixpanel');
+            return technologies;
+          })()
+        ]);
 
-          results.findings.enhancedDNS = dnsRecords;
-        } catch (e) {
-          console.error("Enhanced DNS analysis failed:", e);
+        // Apply enhanced DNS results
+        if (enhancedDnsResult.status === 'fulfilled') {
+          results.findings.enhancedDNS = enhancedDnsResult.value;
         }
 
-        // IP Geolocation for discovered IPs
+        // IP Geolocation — parallel, no delays
         console.log("Performing IP geolocation...");
-        try {
-          const discoveredIPs = new Set<string>();
-          
-          // Collect IPs from subdomains
-          results.findings.subdomains?.found?.forEach((sub: any) => {
-            sub.ips.forEach((ip: string) => discoveredIPs.add(ip));
-          });
+        const discoveredIPs = new Set<string>();
+        results.findings.subdomains?.found?.forEach((sub: any) => sub.ips.forEach((ip: string) => discoveredIPs.add(ip)));
+        results.findings.enhancedDNS?.A?.forEach((ip: string) => discoveredIPs.add(ip));
 
-          // Collect IPs from A records
-          results.findings.enhancedDNS?.A?.forEach((ip: string) => discoveredIPs.add(ip));
-
-          const ipInfo = [];
-          for (const ip of Array.from(discoveredIPs).slice(0, 10)) { // Limit to 10 IPs
-            try {
-              const ipResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting`);
-              if (ipResponse.ok) {
-                const ipData = await ipResponse.json();
-                if (ipData.status === 'success') {
-                  ipInfo.push({
-                    ip,
-                    location: `${ipData.city}, ${ipData.regionName}, ${ipData.country}`,
-                    coordinates: { lat: ipData.lat, lon: ipData.lon },
-                    isp: ipData.isp,
-                    org: ipData.org,
-                    asn: ipData.as,
-                    hosting: ipData.hosting,
-                    proxy: ipData.proxy,
-                    timezone: ipData.timezone
-                  });
-                }
+        const ipResults = await Promise.allSettled(
+          Array.from(discoveredIPs).slice(0, 10).map(async (ip) => {
+            const ipResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting`);
+            if (ipResponse.ok) {
+              const ipData = await ipResponse.json();
+              if (ipData.status === 'success') {
+                return { ip, location: `${ipData.city}, ${ipData.regionName}, ${ipData.country}`, coordinates: { lat: ipData.lat, lon: ipData.lon }, isp: ipData.isp, org: ipData.org, asn: ipData.as, hosting: ipData.hosting, proxy: ipData.proxy, timezone: ipData.timezone };
               }
-              // Rate limit: 45 requests per minute
-              await new Promise(resolve => setTimeout(resolve, 1500));
-            } catch (e) {
-              console.error(`IP geolocation failed for ${ip}:`, e);
             }
-          }
+            return null;
+          })
+        );
+        const ipInfo = ipResults.filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value != null).map(r => r.value);
+        results.findings.ipGeolocation = { total: discoveredIPs.size, analyzed: ipInfo.length, details: ipInfo };
 
-          results.findings.ipGeolocation = {
-            total: discoveredIPs.size,
-            analyzed: ipInfo.length,
-            details: ipInfo
-          };
-        } catch (e) {
-          console.error("IP geolocation failed:", e);
-        }
-
-        // Email deliverability check
+        // Email deliverability (uses enhancedDNS results)
         console.log("Checking email deliverability...");
-        try {
-          const emailDeliverability: any = {
-            mxRecords: results.findings.enhancedDNS?.MX?.length > 0,
-            spfConfigured: !!results.findings.enhancedDNS?.SPF,
-            dmarcConfigured: !!results.findings.enhancedDNS?.DMARC,
-            score: 0
-          };
+        const emailDeliverability: any = {
+          mxRecords: results.findings.enhancedDNS?.MX?.length > 0,
+          spfConfigured: !!results.findings.enhancedDNS?.SPF,
+          dmarcConfigured: !!results.findings.enhancedDNS?.DMARC,
+          score: 0
+        };
+        if (emailDeliverability.mxRecords) emailDeliverability.score += 40;
+        if (emailDeliverability.spfConfigured) emailDeliverability.score += 30;
+        if (emailDeliverability.dmarcConfigured) emailDeliverability.score += 30;
+        emailDeliverability.rating = emailDeliverability.score >= 80 ? 'Excellent' : emailDeliverability.score >= 50 ? 'Good' : emailDeliverability.score >= 30 ? 'Fair' : 'Poor';
+        results.findings.emailDeliverability = emailDeliverability;
 
-          if (emailDeliverability.mxRecords) emailDeliverability.score += 40;
-          if (emailDeliverability.spfConfigured) emailDeliverability.score += 30;
-          if (emailDeliverability.dmarcConfigured) emailDeliverability.score += 30;
-
-          emailDeliverability.rating = emailDeliverability.score >= 80 ? 'Excellent' : 
-                                        emailDeliverability.score >= 50 ? 'Good' : 
-                                        emailDeliverability.score >= 30 ? 'Fair' : 'Poor';
-
-          results.findings.emailDeliverability = emailDeliverability;
-        } catch (e) {
-          console.error("Email deliverability check failed:", e);
-        }
-
-        // Google Dorking for exposed files
+        // Google Dorks
         console.log("Checking for exposed files (Google Dorks)...");
-        try {
-          const dorkResults: any[] = [];
-          const dorks = [
-            `site:${domain} filetype:pdf`,
-            `site:${domain} filetype:doc`,
-            `site:${domain} filetype:xls`,
-            `site:${domain} filetype:sql`,
-            `site:${domain} filetype:env`,
-            `site:${domain} filetype:log`,
-            `site:${domain} "index of /"`,
-            `site:${domain} intitle:"index of" "backup"`,
-            `site:${domain} ext:php inurl:config`,
-            `site:${domain} inurl:admin`
-          ];
-
-          dorkResults.push(...dorks.map(dork => ({
+        const dorks = [
+          `site:${domain} filetype:pdf`, `site:${domain} filetype:doc`, `site:${domain} filetype:xls`,
+          `site:${domain} filetype:sql`, `site:${domain} filetype:env`, `site:${domain} filetype:log`,
+          `site:${domain} "index of /"`, `site:${domain} intitle:"index of" "backup"`,
+          `site:${domain} ext:php inurl:config`, `site:${domain} inurl:admin`
+        ];
+        results.findings.googleDorks = {
+          total: dorks.length,
+          queries: dorks.map(dork => ({
             query: dork,
-            risk: dork.includes('sql') || dork.includes('env') || dork.includes('config') ? 'High' : 
-                  dork.includes('backup') || dork.includes('admin') ? 'Medium' : 'Low',
+            risk: dork.includes('sql') || dork.includes('env') || dork.includes('config') ? 'High' : dork.includes('backup') || dork.includes('admin') ? 'Medium' : 'Low',
             searchUrl: `https://www.google.com/search?q=${encodeURIComponent(dork)}`
-          })));
+          })),
+          note: 'Execute search URLs manually to check for exposed files'
+        };
 
-          results.findings.googleDorks = {
-            total: dorks.length,
-            queries: dorkResults,
-            note: 'Execute search URLs manually to check for exposed files'
-          };
-        } catch (e) {
-          console.error("Google dorking failed:", e);
-        }
-
-        // SSL/TLS Analysis
-        console.log("Analyzing SSL/TLS configuration...");
-        try {
-          const sslResponse = await fetch(`https://${domain}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-          });
-          
-          const sslInfo: any = {
-            enabled: sslResponse.url.startsWith('https'),
-            redirectsToHttps: !sslResponse.url.startsWith('https://www.') && sslResponse.url.startsWith('https'),
-            headers: {
-              strictTransportSecurity: sslResponse.headers.get('strict-transport-security'),
-              contentSecurityPolicy: sslResponse.headers.get('content-security-policy'),
-              xFrameOptions: sslResponse.headers.get('x-frame-options'),
-              xContentTypeOptions: sslResponse.headers.get('x-content-type-options'),
-              referrerPolicy: sslResponse.headers.get('referrer-policy')
-            },
-            score: 0
-          };
-
-          if (sslInfo.enabled) sslInfo.score += 30;
-          if (sslInfo.headers.strictTransportSecurity) sslInfo.score += 25;
-          if (sslInfo.headers.contentSecurityPolicy) sslInfo.score += 20;
-          if (sslInfo.headers.xFrameOptions) sslInfo.score += 15;
-          if (sslInfo.headers.xContentTypeOptions) sslInfo.score += 10;
-
-          sslInfo.rating = sslInfo.score >= 80 ? 'Excellent' : 
-                           sslInfo.score >= 60 ? 'Good' : 
-                           sslInfo.score >= 40 ? 'Fair' : 'Poor';
-
-          results.findings.sslAnalysis = sslInfo;
-        } catch (e) {
-          console.error("SSL/TLS analysis failed:", e);
-        }
-
-        // Technology stack detection
-        console.log("Detecting technology stack...");
-        try {
-          const siteResponse = await fetch(`https://${domain}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            redirect: 'follow'
-          });
-          
-          const headers = Object.fromEntries(siteResponse.headers.entries());
-          const html = await siteResponse.text();
-          
-          const technologies = {
-            server: headers['server'] || 'Unknown',
-            poweredBy: headers['x-powered-by'] || 'Not disclosed',
-            framework: null as string | null,
-            cms: null as string | null,
-            analytics: [] as string[],
-            cdn: headers['cf-ray'] ? 'Cloudflare' : headers['x-amz-cf-id'] ? 'AWS CloudFront' : 'None detected',
-            security: {
-              https: siteResponse.url.startsWith('https'),
-              hsts: !!headers['strict-transport-security'],
-              csp: !!headers['content-security-policy'],
-              xframe: headers['x-frame-options'] || 'Not set',
-              xss: headers['x-xss-protection'] || 'Not set'
-            }
-          };
-
-          // Detect frameworks and CMS
-          if (html.includes('wp-content') || html.includes('wordpress')) technologies.cms = 'WordPress';
-          if (html.includes('drupal')) technologies.cms = 'Drupal';
-          if (html.includes('joomla')) technologies.cms = 'Joomla';
-          if (html.includes('shopify')) technologies.cms = 'Shopify';
-          if (html.includes('wix')) technologies.cms = 'Wix';
-          
-          if (html.includes('react')) technologies.framework = 'React';
-          if (html.includes('vue')) technologies.framework = 'Vue.js';
-          if (html.includes('angular')) technologies.framework = 'Angular';
-          if (html.includes('next')) technologies.framework = 'Next.js';
-          
-          // Detect analytics
-          if (html.includes('google-analytics') || html.includes('gtag')) technologies.analytics.push('Google Analytics');
-          if (html.includes('facebook.com/tr')) technologies.analytics.push('Facebook Pixel');
-          if (html.includes('hotjar')) technologies.analytics.push('Hotjar');
-          if (html.includes('mixpanel')) technologies.analytics.push('Mixpanel');
-
-          results.findings.techStack = technologies;
-        } catch (e) {
-          console.error("Tech stack detection failed:", e);
-        }
+        // Apply SSL and tech stack results
+        if (sslResult.status === 'fulfilled') results.findings.sslAnalysis = sslResult.value;
+        if (techResult.status === 'fulfilled') results.findings.techStack = techResult.value;
       }
     }
 

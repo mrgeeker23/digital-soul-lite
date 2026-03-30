@@ -13,10 +13,22 @@ interface SearchInterfaceProps {
   onResults?: (results: any) => void;
 }
 
+const PROGRESS_MESSAGES = [
+  "Querying breach databases...",
+  "Analyzing domain infrastructure...",
+  "Enumerating subdomains...",
+  "Performing DNS analysis...",
+  "Checking SSL/TLS configuration...",
+  "Scanning IP geolocation...",
+  "Detecting technology stack...",
+  "Compiling results..."
+];
+
 export function SearchInterface({ onResults }: SearchInterfaceProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"username" | "email" | "phone">("username");
   const [isLoading, setIsLoading] = useState(false);
+  const [progressMsg, setProgressMsg] = useState("");
   const { toast } = useToast();
 
   const handleSearch = async () => {
@@ -29,7 +41,6 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
       return;
     }
 
-    // Check rate limits before making API call
     const apiCheck = apiRateLimiter.canCallApi('osint-search');
     if (!apiCheck.allowed) {
       toast({
@@ -41,7 +52,17 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
     }
 
     setIsLoading(true);
+    setProgressMsg(PROGRESS_MESSAGES[0]);
     console.log(`Searching ${searchType}:`, searchQuery);
+
+    // Cycle progress messages for email searches
+    let msgIndex = 0;
+    const progressInterval = searchType === "email"
+      ? setInterval(() => {
+          msgIndex = Math.min(msgIndex + 1, PROGRESS_MESSAGES.length - 1);
+          setProgressMsg(PROGRESS_MESSAGES[msgIndex]);
+        }, 2000)
+      : null;
 
     try {
       const { data, error } = await supabase.functions.invoke('osint-search', {
@@ -50,10 +71,7 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
 
       if (error) throw error;
 
-      // Increment usage counter after successful call
       apiRateLimiter.incrementUsage('osint-search');
-      
-      // Increment usage for each API that was actually called
       if (data.apisUsed && Array.isArray(data.apisUsed)) {
         data.apisUsed.forEach((apiName: string) => {
           apiRateLimiter.incrementUsage(apiName);
@@ -61,7 +79,6 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
       }
 
       console.log("Search results:", data);
-      
       toast({
         title: "Search Complete",
         description: `Found data for ${searchQuery}`,
@@ -78,7 +95,9 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
         variant: "destructive",
       });
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setIsLoading(false);
+      setProgressMsg("");
     }
   };
 
@@ -197,6 +216,13 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
               </div>
             </TabsContent>
           </Tabs>
+
+          {isLoading && progressMsg && (
+            <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50 border border-border">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground animate-pulse">{progressMsg}</span>
+            </div>
+          )}
 
           <Alert className="bg-muted border-border">
             <AlertTriangle className="h-4 w-4 text-warning" />

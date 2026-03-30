@@ -217,6 +217,13 @@ export function SearchInterface({ onResults }: SearchInterfaceProps) {
             </TabsContent>
           </Tabs>
 
+          {isLoading && progressMsg && (
+            <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50 border border-border">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground animate-pulse">{progressMsg}</span>
+            </div>
+          )}
+
           <Alert className="bg-muted border-border">
             <AlertTriangle className="h-4 w-4 text-warning" />
             <AlertDescription className="text-sm text-muted-foreground">
